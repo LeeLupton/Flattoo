@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""Print an image at true physical size to the stencil printer.
+
+Thermal stencil paper transfers the carbon to the back of the top sheet, which
+then goes face-down on skin: the orientation flips twice. So the default is
+NO mirroring. --mirror is there for the artist who wants the design to face
+the other way on the body.
+
+Scale: --width or --height in inches sets the design size exactly. Without
+them the file's own dpi is used, and if it has none, 300 dpi (1 px = 1/300 in).
+Nothing is ever fit-to-page unless you pass --fit.
+"""
+
+import argparse
+import datetime as dt
+import sys
+import tempfile
+from pathlib import Path
+
+sys.path.insert(0, "@libdir@")
+import stencil_common as sc  # noqa: E402
+
+
+def parse_args(argv):
+    p = argparse.ArgumentParser(prog="stencil-print", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("file", nargs="?", help="PNG/JPG/WebP/HEIC/PDF/SVG… (GUI asks when omitted)")
+    size = p.add_mutually_exclusive_group()
+    size.add_argument("--width", type=float, metavar="IN", help="design width in inches")
+    size.add_argument("--height", type=float, metavar="IN", help="design height in inches")
+    p.add_argument("--mirror", action="store_true", help="flip horizontally (default: no)")
+    p.add_argument("--shading", action="store_true",
+                   help="keep gray shading (dithered) instead of crisp black/white lines")
+    p.add_argument("--threshold", type=int, default=128, metavar="0-255",
+                   help="gray level that becomes black in line mode (default 128)")
+    p.add_argument("--fit", action="store_true", help="shrink an oversize design to the printable area")
+    p.add_argument("--copies", type=int, default=1)
+    p.add_argument("--queue", default=sc.QUEUE)
+    p.add_argument("--page", choices=sorted(sc.PAGE_SIZES_IN), help="override the queue's page size")
+    p.add_argument("--dry-run", metavar="OUT.pdf", help="write the page as a PDF, do not print")
+    p.add_argument("--gui", action="store_true", help="ask for size/mirror/shading in a dialog")
+    return p.parse_args(argv)
+
+
+def gui_prompt(args, native_in):
+    """One zenity form. Returns False when the artist cancelled."""
+    hint = (f"File size: {native_in[0]:.2f} × {native_in[1]:.2f} in" if native_in
+            else "File has no size information; 300 px = 1 in unless you set a width.")
+    rc, out = sc.zenity(
+        "--forms", "--title=Print stencil", f"--text=<b>{Path(args.file).name}</b>\n{hint}\n",
+        "--separator=|",
+        "--add-entry=Width on skin (inches, blank = as is)",
+        "--add-combo=Mirror", "--combo-values=No|Yes",
+        "--add-combo=Lines", "--combo-values=Crisp black lines|Keep shading",
+        "--add-entry=Copies (1)",
+        "--width=420",
+    )
+    if rc != 0:
+        return False
+    width, mirror, lines, copies = (out.split("|") + ["", "", "", ""])[:4]
+    width = width.strip().replace('"', "").replace("in", "").replace(",", ".")
+    if width:
+        try:
+            args.width = float(width)
+            args.height = None
+        except ValueError:
+            sc.gui_error(f"'{width}' is not a number of inches.")
+            return False
+    args.mirror = mirror.strip() == "Yes"
+    args.shading = lines.strip().startswith("Keep")
+    if copies.strip().isdigit():
+        args.copies = max(1, int(copies))
+    return True
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    gui = args.gui and sc.have_gui()
+
+    if not args.file:
+        if not gui:
+            sc.log("stencil-print: give a file (or use --gui)")
+            return 2
+        picked = sc.pick_file("Choose the design to print as a stencil")
+        if not picked:
+            return 1
+        args.file = str(picked)
+
+    try:
+        if not args.dry_run and not sc.queue_exists(args.queue):
+            raise sc.StencilError(
+                f"No '{args.queue}' printer. Plug the stencil printer in by USB and wait a few seconds.")
+
+        img, native_dpi = sc.rasterize(Path(args.file))
+        gray = sc.gray_on_white(img)
+        native_in = (gray.width / native_dpi, gray.height / native_dpi) if native_dpi else None
+
+        if gui and not gui_prompt(args, native_in):
+            return 1
+
+        design = gray if args.shading else sc.threshold(gray, args.threshold)
+        page = args.page or (sc.queue_page_size(args.queue) if not args.dry_run else "Letter")
+
+        try:
+            page_img, placement = sc.compose_page(design, page, args.width, args.height,
+                                                  args.mirror, args.fit, native_dpi)
+        except sc.StencilError as e:
+            if not gui:
+                raise
+            maxw, maxh = sc.printable_in(page)
+            rc, _ = sc.zenity("--question", "--title=Too big for the paper",
+                              f"--text={e}\n\nShrink it to fit {maxw:.1f} × {maxh:.1f} in?",
+                              "--ok-label=Shrink to fit", "--cancel-label=Cancel")
+            if rc != 0:
+                return 1
+            page_img, placement = sc.compose_page(design, page, args.width, args.height,
+                                                  args.mirror, True, native_dpi)
+
+        w_in, h_in = placement.design_in
+        summary = (f"{w_in:.2f} × {h_in:.2f} in on {page}"
+                   + (", mirrored" if placement.mirrored else "")
+                   + (", shrunk to fit" if placement.shrunk else "")
+                   + (", shading kept" if args.shading else ", crisp lines"))
+
+        if args.dry_run:
+            sc.save_pdf(page_img, Path(args.dry_run), bilevel=not args.shading)
+            print(f"wrote {args.dry_run}: {summary}")
+            return 0
+
+        with tempfile.TemporaryDirectory(prefix="stencil-") as td:
+            pdf = Path(td) / "stencil.pdf"
+            sc.save_pdf(page_img, pdf, bilevel=not args.shading)
+            title = f"stencil {Path(args.file).stem} {dt.datetime.now():%H:%M}"
+            job = sc.print_pdf(pdf, args.queue, page, args.copies, bilevel=not args.shading, title=title)
+        print(f"{job}: {summary}")
+        if gui:
+            sc.notify("Stencil sent", summary)
+        return 0
+
+    except sc.StencilError as e:
+        sc.gui_error(str(e)) if gui else sc.log("error:", e)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

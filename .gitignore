@@ -1,0 +1,8 @@
+# Written by flattoo-install on the machine; never commit secrets.
+hosts/*/passwords.nix
+# Vendor driver drops that may not be redistributed.
+vendor/
+result
+result-*
+*.iso
+.direnv/

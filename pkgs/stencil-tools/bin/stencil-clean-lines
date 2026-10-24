@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""Turn a scanned or photographed pencil sketch into clean black stencil lines.
+
+Local adaptive threshold: a pixel is ink when it is darker than the paper
+around it by more than --offset. That handles uneven lighting from a phone
+photo and the gray cast of a cheap scanner. --drop-blue removes non-photo-blue
+construction lines first. Output is a 1-bit PNG next to the input,
+<name>-stencil.png, with the source's dpi preserved.
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+import numpy as np
+from PIL import Image, ImageFilter
+
+sys.path.insert(0, "@libdir@")
+import stencil_common as sc  # noqa: E402
+
+
+def parse_args(argv):
+    p = argparse.ArgumentParser(prog="stencil-clean-lines", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("file", nargs="?")
+    p.add_argument("--out", metavar="OUT.png")
+    p.add_argument("--radius", type=int, default=25, help="neighbourhood radius in px for the local paper estimate (25)")
+    p.add_argument("--offset", type=int, default=14, help="how much darker than local paper counts as ink, 0-255 (14)")
+    p.add_argument("--despeckle", type=int, default=3, choices=[0, 3, 5], help="median filter size, 0 to disable (3)")
+    p.add_argument("--drop-blue", action="store_true", help="erase non-photo-blue pencil before thresholding")
+    p.add_argument("--thicken", type=int, default=0, choices=[0, 1, 2], help="grow lines by N px (0)")
+    p.add_argument("--gui", action="store_true")
+    return p.parse_args(argv)
+
+
+def drop_blue(rgb: Image.Image) -> Image.Image:
+    a = np.asarray(rgb.convert("RGB")).astype(np.int16)
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    blue = (b - r > 40) & (b > 140)
+    a[blue] = 255
+    return Image.fromarray(a.astype(np.uint8), "RGB")
+
+
+def clean(img: Image.Image, radius: int, offset: int, despeckle: int, thicken: int, blue: bool) -> Image.Image:
+    if blue and img.mode not in ("L", "1"):
+        img = drop_blue(img)
+    gray = sc.gray_on_white(img)
+    # Local paper brightness: a wide blur. Ink is whatever sits well below it.
+    paper = gray.filter(ImageFilter.BoxBlur(radius))
+    g = np.asarray(gray).astype(np.int16)
+    pbg = np.asarray(paper).astype(np.int16)
+    ink = (pbg - g) > offset
+    # Also catch solid black fills, which a local threshold alone misses.
+    ink |= g < 60
+    out = Image.fromarray(np.where(ink, 0, 255).astype(np.uint8), "L")
+    if despeckle:
+        out = out.filter(ImageFilter.MedianFilter(despeckle))
+    if thicken:
+        out = out.filter(ImageFilter.MinFilter(2 * thicken + 1))
+    return out.point(lambda v: 255 if v >= 128 else 0, mode="1")
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    gui = args.gui and sc.have_gui()
+    if not args.file:
+        if not gui:
+            sc.log("stencil-clean-lines: give a file (or use --gui)")
+            return 2
+        picked = sc.pick_file("Choose the sketch to clean")
+        if not picked:
+            return 1
+        args.file = str(picked)
+
+    try:
+        src = Path(args.file)
+        img, dpi = sc.rasterize(src)
+        result = clean(img, args.radius, args.offset, args.despeckle, args.thicken, args.drop_blue)
+        out = Path(args.out) if args.out else src.with_name(f"{src.stem}-stencil.png")
+        d = dpi or float(sc.DPI)
+        result.save(out, "PNG", dpi=(d, d))
+        print(f"wrote {out} ({result.width}x{result.height} px, {d:g} dpi)")
+        if gui:
+            sc.notify("Lines cleaned", out.name, icon="image-x-generic")
+            sc.run(["xdg-open", str(out)])
+        return 0
+    except sc.StencilError as e:
+        sc.gui_error(str(e)) if gui else sc.log("error:", e)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

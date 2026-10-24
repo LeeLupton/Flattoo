@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Thunar right-click actions. Copied to ~/.config/Thunar/uca.xml on first run. -->
+<actions>
+<action>
+	<icon>document-print</icon>
+	<name>Print as Stencil</name>
+	<submenu></submenu>
+	<unique-id>1761000000000001-1</unique-id>
+	<command>stencil-print --gui %f</command>
+	<description>Print this design at true size on the stencil printer</description>
+	<range></range>
+	<patterns>*</patterns>
+	<image-files/>
+	<other-files/>
+</action>
+<action>
+	<icon>image-x-generic</icon>
+	<name>Clean Lines (sketch to stencil)</name>
+	<submenu></submenu>
+	<unique-id>1761000000000002-1</unique-id>
+	<command>stencil-clean-lines --gui %f</command>
+	<description>Turn a scanned or photographed pencil sketch into clean black lines</description>
+	<range></range>
+	<patterns>*</patterns>
+	<image-files/>
+</action>
+<action>
+	<icon>krita</icon>
+	<name>Open in Krita</name>
+	<submenu></submenu>
+	<unique-id>1761000000000003-1</unique-id>
+	<command>krita %F</command>
+	<description>Edit in Krita</description>
+	<range></range>
+	<patterns>*</patterns>
+	<image-files/>
+</action>
+<action>
+	<icon>utilities-terminal</icon>
+	<name>Open Terminal Here</name>
+	<submenu></submenu>
+	<unique-id>1761000000000004-1</unique-id>
+	<command>exo-open --working-directory %f --launch TerminalEmulator</command>
+	<description>Open a terminal in this folder</description>
+	<range></range>
+	<patterns>*</patterns>
+	<startup-notify/>
+	<directories/>
+</action>
+</actions>

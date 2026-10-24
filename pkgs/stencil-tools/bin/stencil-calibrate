@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""Print a calibration page on the stencil printer.
+
+It has an inch ruler, a cm ruler, a 4.00 in bar and a letter R. Measure the
+bar with a real ruler: 4.00 in means scaling is off and designs print at true
+size. Transfer the R to a scrap of paper or your arm the way you would a
+stencil: it must read correctly. If it reads backwards the mirror setting is
+wrong, not the printer.
+"""
+
+import argparse
+import datetime as dt
+import sys
+import tempfile
+from pathlib import Path
+
+from PIL import Image, ImageDraw, ImageFont
+
+sys.path.insert(0, "@libdir@")
+import stencil_common as sc  # noqa: E402
+
+FONT_REG = "@dejavu@/share/fonts/truetype/DejaVuSans.ttf"
+FONT_BOLD = "@dejavu@/share/fonts/truetype/DejaVuSans-Bold.ttf"
+DPI = sc.DPI
+
+
+def font(size_pt: float, bold=False):
+    px = int(size_pt / 72 * DPI)
+    try:
+        return ImageFont.truetype(FONT_BOLD if bold else FONT_REG, px)
+    except OSError:
+        return ImageFont.load_default()
+
+
+def inch(v: float) -> int:
+    return round(v * DPI)
+
+
+def draw_page(page: str) -> Image.Image:
+    w_in, h_in = sc.PAGE_SIZES_IN[page]
+    img = Image.new("L", (inch(w_in), inch(h_in)), 255)
+    d = ImageDraw.Draw(img)
+    m = sc.MARGIN_IN
+    x0 = inch(m)
+    f_small, f_med, f_big = font(9), font(13, True), font(160, True)
+
+    # Title
+    d.text((x0, inch(m)), "Flattoo stencil calibration", font=f_med, fill=0)
+    d.text((x0, inch(m + 0.26)), f"{dt.date.today().isoformat()}  ·  {page}  ·  300 dpi, no scaling", font=f_small, fill=0)
+
+    # Inch ruler: 0 to 7 in, 1/16 ticks
+    y = inch(1.4)
+    d.line([(x0, y), (x0 + inch(7), y)], fill=0, width=4)
+    for i in range(0, 7 * 16 + 1):
+        x = x0 + round(i / 16 * DPI)
+        if i % 16 == 0:
+            h = inch(0.30)
+            d.text((x - 6, y + h + 8), str(i // 16), font=f_small, fill=0)
+        elif i % 8 == 0:
+            h = inch(0.22)
+        elif i % 4 == 0:
+            h = inch(0.15)
+        else:
+            h = inch(0.09)
+        d.line([(x, y), (x, y + h)], fill=0, width=3 if i % 4 == 0 else 2)
+    d.text((x0 + inch(7.1), y - 10), "inches", font=f_small, fill=0)
+
+    # cm ruler: 0 to 17 cm, mm ticks
+    y = inch(2.4)
+    cm = DPI / 2.54
+    d.line([(x0, y), (x0 + round(17 * cm), y)], fill=0, width=4)
+    for i in range(0, 17 * 10 + 1):
+        x = x0 + round(i / 10 * cm)
+        if i % 10 == 0:
+            h = inch(0.28)
+            d.text((x - 6, y + h + 8), str(i // 10), font=f_small, fill=0)
+        elif i % 5 == 0:
+            h = inch(0.18)
+        else:
+            h = inch(0.09)
+        d.line([(x, y), (x, y + h)], fill=0, width=3 if i % 5 == 0 else 2)
+    d.text((x0 + round(17.2 * cm), y - 10), "cm", font=f_small, fill=0)
+
+    # 4.00 in bar
+    y = inch(3.5)
+    d.rectangle([x0, y, x0 + inch(4), y + inch(0.25)], fill=0)
+    d.text((x0 + inch(4.15), y + 10), "← exactly 4.00 in (101.6 mm). Measure it.", font=f_med, fill=0)
+
+    # 2 x 2 in square and 1 in circle
+    y = inch(4.2)
+    d.rectangle([x0, y, x0 + inch(2), y + inch(2)], outline=0, width=6)
+    d.text((x0 + inch(0.55), y + inch(0.9)), "2 × 2 in", font=f_small, fill=0)
+    cx = x0 + inch(3.5)
+    d.ellipse([cx - inch(0.5), y + inch(0.5), cx + inch(0.5), y + inch(1.5)], outline=0, width=6)
+    d.text((cx - inch(0.3), y + inch(0.93)), "⌀ 1 in", font=f_small, fill=0)
+
+    # Line weights: the thinnest line the paper reproduces
+    x = x0 + inch(4.4)
+    for i, wpx in enumerate((1, 2, 3, 4, 6, 8)):
+        yy = y + inch(0.3 + i * 0.3)
+        d.line([(x, yy), (x + inch(1.6), yy)], fill=0, width=wpx)
+        d.text((x + inch(1.7), yy - 14), f"{wpx} px = {wpx / DPI * 25.4:.2f} mm", font=f_small, fill=0)
+
+    # Orientation check
+    y = inch(6.7)
+    d.text((x0, y), "R", font=f_big, fill=0)
+    tx = x0 + inch(2.2)
+    d.text((tx, y + inch(0.2)), "Orientation check", font=f_med, fill=0)
+    for i, line in enumerate((
+        "Transfer this R like a stencil. On skin it must read as an R.",
+        "Reads backwards?  The mirror option is wrong, not the printer.",
+        "Stencil paper flips the image twice (carbon onto the top sheet,",
+        "top sheet onto skin), so designs print WITHOUT mirroring.",
+    )):
+        d.text((tx, y + inch(0.55 + i * 0.28)), line, font=f_small, fill=0)
+    # Arrow + TOP
+    ax = inch(w_in) - inch(m) - inch(0.4)
+    ay = inch(m + 0.2)
+    d.line([(ax, ay + inch(0.5)), (ax, ay)], fill=0, width=6)
+    d.polygon([(ax - inch(0.12), ay + inch(0.18)), (ax + inch(0.12), ay + inch(0.18)), (ax, ay)], fill=0)
+    d.text((ax - inch(0.2), ay + inch(0.55)), "TOP", font=f_small, fill=0)
+
+    # Footer
+    d.text((x0, inch(h_in - m - 0.2)),
+           "If the 4 in bar measures short or long, run: stencil-queue-setup   (resets the queue to no scaling)",
+           font=f_small, fill=0)
+    return img
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog="stencil-calibrate", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--queue", default=sc.QUEUE)
+    p.add_argument("--page", choices=sorted(sc.PAGE_SIZES_IN))
+    p.add_argument("--dry-run", metavar="OUT.pdf")
+    p.add_argument("--gui", action="store_true")
+    args = p.parse_args(argv)
+    gui = args.gui and sc.have_gui()
+    try:
+        if args.dry_run:
+            page = args.page or "Letter"
+            sc.save_pdf(draw_page(page), Path(args.dry_run))
+            print(f"wrote {args.dry_run} ({page})")
+            return 0
+        if not sc.queue_exists(args.queue):
+            raise sc.StencilError(f"No '{args.queue}' printer. Plug the stencil printer in by USB and wait a few seconds.")
+        page = args.page or sc.queue_page_size(args.queue)
+        if gui:
+            rc, _ = sc.zenity("--question", "--title=Calibration page",
+                              f"--text=Print the calibration page on {page} stencil paper?\n\n"
+                              "Uses one sheet. Measure the 4 in bar and check the R.",
+                              "--ok-label=Print", "--cancel-label=Cancel")
+            if rc != 0:
+                return 1
+        with tempfile.TemporaryDirectory(prefix="stencil-cal-") as td:
+            pdf = Path(td) / "calibration.pdf"
+            sc.save_pdf(draw_page(page), pdf)
+            job = sc.print_pdf(pdf, args.queue, page, title="stencil calibration")
+        print(job)
+        if gui:
+            sc.notify("Calibration page sent", "Measure the 4 in bar; check the R.")
+        return 0
+    except sc.StencilError as e:
+        sc.gui_error(str(e)) if gui else sc.log("error:", e)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# Create or re-point the CUPS queue "Stencil" for whatever stencil printer is
+# attached, with stencil defaults. Runs as root from the udev-triggered
+# systemd unit; also safe to run by hand.
+set -euo pipefail
+
+QUEUE="${FLATTOO_QUEUE:-Stencil}"
+DENSITY="${FLATTOO_DENSITY:-6}"
+
+log() { echo "stencil-queue-setup: $*"; }
+
+# Wait for cupsd.
+for _ in $(seq 1 30); do
+  lpstat -r >/dev/null 2>&1 && break
+  sleep 1
+done
+lpstat -r >/dev/null 2>&1 || { log "cups is not running"; exit 0; }
+
+uri=""
+ppd=""
+kind=""
+
+# 1. USB devices CUPS can see.
+while read -r _ u _; do
+  case "$u" in
+    usb://Brother/PJ-7*|usb://Brother/PJ-8*)
+      model="$(printf '%s' "$u" | sed -E 's#usb://Brother/(PJ-[0-9]+).*#\1#')"
+      short="$(printf '%s' "$model" | tr -d '-' | tr '[:upper:]' '[:lower:]')"   # pj723
+      # Vendor PPD for this exact model, if installed.
+      ppd="$(lpinfo -m 2>/dev/null | awk -v s="$short" 'tolower($1) ~ ("brother_" s "_printer") {print $1; exit}')"
+      uri="$u"; kind="brother"; break ;;
+    usb://*M08F*|usb://*Phomemo*|usb://*QuYin*)
+      ppd="$(lpinfo -m 2>/dev/null | awk 'tolower($0) ~ /phomemo/ && tolower($0) ~ /m08f/ {print $1; exit}')"
+      [ -n "$ppd" ] || ppd="$(lpinfo -m 2>/dev/null | awk 'tolower($0) ~ /m08f/ {print $1; exit}')"
+      uri="$u"; kind="phomemo"; break ;;
+  esac
+done < <(lpinfo -v 2>/dev/null || true)
+
+# 2. Driverless (PJ-8xx over ipp-usb or Wi-Fi). lpinfo -m lists these as driverless:ipp://...
+if [ -z "$uri" ]; then
+  line="$(lpinfo -m 2>/dev/null | grep -i 'driverless:.*PJ-8' | head -n1 || true)"
+  if [ -n "$line" ]; then
+    ppd="$(printf '%s' "$line" | awk '{print $1}')"
+    uri="${ppd#driverless:}"
+    kind="driverless"
+  fi
+fi
+
+if [ -z "$uri" ]; then
+  log "no stencil printer found (lpinfo -v shows: $(lpinfo -v 2>/dev/null | awk '{print $2}' | tr '\n' ' '))"
+  exit 0
+fi
+
+log "found $kind printer at $uri${ppd:+ (ppd: $ppd)}"
+
+if lpstat -p "$QUEUE" >/dev/null 2>&1; then
+  current="$(lpstat -v "$QUEUE" 2>/dev/null | awk '{print $NF}')"
+  if [ "$current" = "$uri" ]; then
+    log "queue $QUEUE already points at $uri"
+  else
+    log "re-pointing $QUEUE from $current to $uri"
+    if [ -n "$ppd" ]; then lpadmin -p "$QUEUE" -v "$uri" -m "$ppd"; else lpadmin -p "$QUEUE" -v "$uri"; fi
+  fi
+else
+  if [ -n "$ppd" ]; then
+    lpadmin -p "$QUEUE" -E -v "$uri" -m "$ppd" -D "Stencil printer" -L "Studio"
+  else
+    log "no PPD for this model; adding as raw/driverless"
+    lpadmin -p "$QUEUE" -E -v "$uri" -m everywhere -D "Stencil printer" -L "Studio" \
+      || lpadmin -p "$QUEUE" -E -v "$uri" -D "Stencil printer" -L "Studio"
+  fi
+fi
+
+# Stencil defaults: no scaling, letter if the PPD has it, monochrome, not shared.
+media=Letter
+lpoptions -p "$QUEUE" -l 2>/dev/null | grep -q '^PageSize.*\bLetter\b' || media=A4
+lpadmin -p "$QUEUE" \
+  -o "media-default=$media" \
+  -o print-scaling-default=none \
+  -o print-color-mode-default=monochrome \
+  -o printer-is-shared=false \
+  -o printer-error-policy=retry-current-job || true
+
+if [ "$kind" = "brother" ]; then
+  # Binary halftone keeps line art crisp; density from flattoo.stencil.density.
+  lpadmin -p "$QUEUE" -o BrHalftonePattern=BrBinary -o "BrDensity=$DENSITY" -o BrMirror=OFF 2>/dev/null || true
+fi
+
+cupsenable "$QUEUE" 2>/dev/null || true
+cupsaccept "$QUEUE" 2>/dev/null || true
+log "queue $QUEUE ready ($media, no scaling)"

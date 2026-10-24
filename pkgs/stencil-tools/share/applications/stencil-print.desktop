@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Print as Stencil
+Comment=Print a design at true size on the stencil printer
+Exec=stencil-print --gui %f
+Icon=document-print
+Terminal=false
+Categories=Graphics;Printing;
+MimeType=image/png;image/jpeg;image/webp;image/heif;image/heic;image/avif;image/bmp;image/tiff;image/gif;image/svg+xml;application/pdf;
+Keywords=stencil;tattoo;print;thermal;

@@ -1,0 +1,56 @@
+# Weekly: bump nixpkgs/disko in flake.lock, prove the laptop config still
+# evaluates, push to main. The laptop pulls main every night and makes the
+# new system its boot default. Failure here means nothing reaches the laptop
+# and GitHub emails the repo owner.
+name: update-flake-lock
+
+on:
+  schedule:
+    - cron: "17 9 * * 1" # Mondays 09:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      - name: Update lock
+        run: |
+          nix flake update
+          git diff --quiet flake.lock && echo "no_change=1" >> "$GITHUB_ENV" || true
+
+      - name: Evaluate every host and package
+        if: env.no_change != '1'
+        run: |
+          nix flake check --no-build
+          nix eval --raw .#nixosConfigurations.shop-laptop.config.system.build.toplevel.drvPath
+          nix eval --raw .#nixosConfigurations.installer.config.system.build.isoImage.drvPath
+
+      - name: Build the stencil tools and run their round-trip test
+        if: env.no_change != '1'
+        run: nix build .#checks.x86_64-linux.stencil-tools --print-build-logs
+
+      - name: Build the Brother driver
+        if: env.no_change != '1'
+        run: nix build .#brother-pj723-cupswrapper --print-build-logs
+
+      - name: Commit and push
+        if: env.no_change != '1'
+        run: |
+          git config user.name "flattoo-bot"
+          git config user.email "flattoo-bot@users.noreply.github.com"
+          git add flake.lock
+          git commit -m "flake.lock: weekly update $(date -u +%F)"
+          git push origin HEAD:main

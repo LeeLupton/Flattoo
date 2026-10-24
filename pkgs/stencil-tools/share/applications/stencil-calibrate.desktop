@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Stencil Printer Calibration
+Comment=Print a ruler page to check that stencils print at true size and the right way round
+Exec=stencil-calibrate --gui
+Icon=preferences-desktop-printer
+Terminal=false
+Categories=Graphics;Printing;Settings;
+Keywords=stencil;calibration;ruler;printer;

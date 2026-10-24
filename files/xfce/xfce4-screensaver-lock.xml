@@ -1,0 +1,27 @@
+<?xml version="1.1" encoding="UTF-8"?>
+
+<!-- Lock when the lid closes / the laptop sleeps. Do not lock on idle: the
+     artist steps away mid-session constantly and comes back to the same
+     canvas. Blank the screen after 15 minutes. -->
+<channel name="xfce4-screensaver" version="1.0">
+  <property name="saver" type="empty">
+    <property name="enabled" type="bool" value="true"/>
+    <property name="mode" type="int" value="0"/>
+    <property name="idle-activation" type="empty">
+      <property name="enabled" type="bool" value="true"/>
+      <property name="delay" type="int" value="15"/>
+    </property>
+  </property>
+  <property name="lock" type="empty">
+    <property name="enabled" type="bool" value="true"/>
+    <property name="saver-activation" type="empty">
+      <property name="enabled" type="bool" value="false"/>
+    </property>
+    <property name="sleep-activation" type="empty">
+      <property name="enabled" type="bool" value="true"/>
+    </property>
+    <property name="user-switching" type="empty">
+      <property name="enabled" type="bool" value="false"/>
+    </property>
+  </property>
+</channel>
