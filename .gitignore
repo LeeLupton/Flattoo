@@ -6,3 +6,5 @@ result
 result-*
 *.iso
 .direnv/
+__pycache__/
+*.pyc
