@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# "Fix Stencil Printer": re-run detection, re-enable the queue, report.
+# Runs as the artist; polkit allows starting exactly this unit.
+set -uo pipefail
+QUEUE="${FLATTOO_QUEUE:-Stencil}"
+
+systemctl start stencil-queue-setup.service 2>/dev/null
+cupsenable "$QUEUE" 2>/dev/null
+cupsaccept "$QUEUE" 2>/dev/null
+
+if lpstat -p "$QUEUE" >/dev/null 2>&1; then
+  state="$(lpstat -p "$QUEUE" 2>/dev/null | head -n1)"
+  dev="$(lpstat -v "$QUEUE" 2>/dev/null | awk '{print $NF}')"
+  jobs="$(lpstat -o "$QUEUE" 2>/dev/null | wc -l)"
+  msg="Stencil printer is ready.\n\n$state\nConnected at: $dev\nJobs waiting: $jobs"
+  icon=info
+else
+  msg="No stencil printer found.\n\nCheck the USB cable and that the printer is switched on, wait ten seconds, then try again.\n\nIf you only have an office printer and a thermal copier, use Print as Stencil anyway: it will offer the office printer."
+  icon=warning
+fi
+
+if [ -n "${DISPLAY:-}" ] && command -v zenity >/dev/null; then
+  zenity "--$icon" --title="Stencil printer" --text="$msg" --width=380 2>/dev/null
+else
+  printf '%b\n' "$msg"
+fi

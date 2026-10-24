@@ -87,14 +87,18 @@ in
       brother.enable = mkOption {
         type = types.bool;
         default = true;
-        description = "Brother PocketJet PJ-723 (S8 stencil printer) vendor driver, fetched from download.brother.com at build time.";
+        description = "Brother PocketJet 7 vendor drivers (PJ-722/723/762/763/773, the S8 stencil kit), fetched from download.brother.com at build time. PJ-8xx are driverless and need nothing.";
       };
       phomemo = {
-        enable = mkEnableOption "the Phomemo M08F family driver (needs the vendor archive, see docs/printers.md)";
+        enable = mkOption {
+          type = types.bool;
+          default = true;
+          description = "Phomemo / QuYin vendor driver: M08F family, TP81-TP88 stencil printers, T08FS and the label printers (75 PPDs).";
+        };
         driverArchive = mkOption {
           type = types.nullOr types.path;
           default = null;
-          description = "Path to Phomemo's Linux driver archive (zip or tar). Required when phomemo.enable is true.";
+          description = "Override the pinned vendor archive with a newer one from phomemo.com (zip, tar or .pet).";
         };
       };
       density = mkOption {

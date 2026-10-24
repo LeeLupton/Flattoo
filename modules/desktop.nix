@@ -61,9 +61,13 @@ in
     ];
   };
   programs.xfconf.enable = true;
-  services.gvfs.enable = true; # USB sticks, phones over MTP, network shares
+  services.gvfs.enable = true; # USB sticks, Android phones over MTP, network shares
   services.tumbler.enable = true; # thumbnails in Thunar
   services.udisks2.enable = true;
+
+  # iPhone over a cable: usbmuxd pairs it, gvfs' AFC backend shows the photo
+  # roll in Thunar after "Trust this computer" on the phone.
+  services.usbmuxd.enable = true;
 
   # iPhone photos arrive as HEIC, Android as WebP/AVIF. Windows needs a paid
   # codec pack for the first one; here every image viewer just opens them.
@@ -99,6 +103,8 @@ in
     xarchiver # zip/7z/rar front end
     font-manager # install a script font by double-clicking it
     localsend # phone <-> laptop file transfer over Wi-Fi, no cloud
+    libimobiledevice # iPhone pairing tools
+    ifuse
     zenity
     libnotify
     xdg-utils

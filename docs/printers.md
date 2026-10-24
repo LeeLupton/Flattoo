@@ -1,41 +1,58 @@
 # Stencil printers
 
+Design rule: the artist plugs something in and it works, or the menu's
+**Fix Stencil Printer** makes it work, and nobody edits a config file.
+
 ## How the queue works
 
-`modules/stencil.nix` installs a udev rule: when a Brother PJ or a
-Phomemo/QuYin M08F-class device appears on USB, `stencil-queue-setup.service`
-runs (also 45 s after every boot). It:
+`modules/stencil.nix` installs a udev rule: when any USB printer-class
+device (or a Phomemo/QuYin unit that enumerates as vendor-specific) appears,
+`stencil-queue-setup.service` runs; it also runs 45 s after every boot and
+from the **Fix Stencil Printer** menu entry (polkit lets the artist start
+exactly that unit). It:
 
 1. waits for `cupsd`,
-2. finds the printer in `lpinfo -v`,
+2. finds a stencil printer in `lpinfo -v` / `lpinfo -m` (rules below),
 3. creates the `Stencil` queue (or re-points it if the URI changed),
 4. sets stencil defaults: `media-default=Letter` (A4 if the PPD has no
-   Letter), `print-scaling-default=none`, monochrome, not shared, and on
-   Brother `BrHalftonePattern=BrBinary`, `BrDensity=<flattoo.stencil.density>`,
-   `BrMirror=OFF`.
+   Letter), `print-scaling-default=none`, monochrome, not shared,
+   `printer-error-policy=retry-current-job` (a paper-out never leaves the
+   queue stopped), and per-driver options.
 
 `stencil-print` then sends a Letter/A4 PDF whose page size matches the queue,
-with `print-scaling=none`, so the CUPS PDF filter never rescales. Run
-`stencil-queue-setup` by hand (as root) if a queue was edited into a bad state.
+with `print-scaling=none`, so the CUPS PDF filter never rescales.
 
-## Brother PocketJet PJ-723 (Brother S8 kit)
+| Printer | Detection | Driver | Options set |
+|---|---|---|---|
+| Brother PJ-722/723/762/763/773 | `usb://Brother/PJ-7xx` | vendor LPR + CUPS wrapper for that model | `BrHalftonePattern=BrBinary`, `BrDensity=<flattoo.stencil.density>`, `BrMirror=OFF` |
+| Brother PJ-822/823/862/863/883 | `driverless:` entry containing `PJ-8` (ipp-usb or Wi-Fi) | none (IPP Everywhere) | — |
+| Phomemo / QuYin (M08F family, TP81–TP88, T08FS, M08 Pro, …) | `usb://<vendor>/<model>`; the PPD whose name is the longest prefix of the model string: `M08F-WS-Q803` → `M08F-WS`, `M08F_PLUS` → `M08F`, `TP88` → `TP88` | vendor filters + 75 PPDs | `ColorOption=GrayScale`, `Rotate=0` |
+| Anything else | not touched | — | — |
 
-Vendor driver, version 1.2.0-1 (Brother, September 2026):
+No stencil printer at all? **Print as Stencil** offers the other printers on
+the laptop and prints at true size on plain paper, for shops that transfer
+with a thermal copier.
 
-* `pkgs/brother-pj/lpr.nix` — `pj723lpr-1.2.0-1.i386.rpm`
-  (`rastertobrpt1`, `filterpj723`, `psconvertpt1`, option tools)
-* `pkgs/brother-pj/cupswrapper.nix` — `pj723cupswrapper-1.2.0-1.i386.rpm`
-  (PPD + `brcupsconfpt1`; the CUPS filter is generated at build time the
-  same way Brother's installer generates it)
+## Brother PocketJet 7 (PJ-722/723/762/763/773; the S8 kit is a PJ-723)
+
+Vendor driver 1.2.0-1 (Brother, September 2026), two packages per model,
+fetched from `download.brother.com` with pinned hashes
+(`pkgs/brother-pj/models.nix`). All five were fetched, unpacked and diffed:
+identical modulo the model name.
+
+* `lpr.nix` — `rastertobrpt1`, `filterpj7xx`, `psconvertpt1`, option tools
+* `cupswrapper.nix` — PPD + `brcupsconfpt1`; the CUPS filter is generated at
+  build time the same way Brother's installer generates it
 
 Both are 32-bit binaries patched to the i686 glibc loader. Brother's option
-tool has `/opt/brother/PTouch/pj723/inf/...` compiled in, so
-`modules/printing.nix` places a symlink there (systemd-tmpfiles). The chain
-was run end to end in the build environment: a PostScript calibration page
-produced 984 KB of PJ raster, and `BrHalftonePattern`/`BrDensity`/`BrMirror`/
-`PageSize` all showed up in the rc file the raster converter read.
+tool has `/opt/brother/PTouch/<model>/inf/...` compiled in, so
+`modules/printing.nix` symlinks each of the five at boot (systemd-tmpfiles).
+The PJ-723 and PJ-773 chains were run end to end in the build environment:
+PostScript calibration page in, 984 KB of PJ raster out, and
+`BrHalftonePattern` / `BrDensity` / `BrMirror` / `PageSize` all present in
+the rc file the raster converter read.
 
-PPD options worth knowing (`lpoptions -p Stencil -l`):
+PPD options (`lpoptions -p Stencil -l`):
 
 | Option | Values | Stencil use |
 |---|---|---|
@@ -45,45 +62,54 @@ PPD options worth knowing (`lpoptions -p Stencil -l`):
 | `PageSize` | Letter, A4, Legal, Roll*, Perf*, Retract*, ContinuousLetter | Cut-sheet stencil paper = Letter |
 | `BrSpeed` | 0sp…3sp, PRD | Slower = darker on some papers |
 
-Other PocketJet 7 models (PJ-722/762/763/773) use the same driver family;
-swap the model string and the two `dlfp` download IDs in `pkgs/brother-pj/`.
+## Brother PocketJet 8 (PJ-822/823/862/863/883)
 
-## Brother PJ-8xx (PJ-822/823/862/863/883)
+AirPrint printers with no Linux LPR package. Over Wi-Fi they appear
+driverless via Avahi; over USB, `ipp-usb` exposes them as IPP and
+`stencil-queue-setup` picks the `driverless:` entry. Density/halftone are
+then IPP attributes (`print-quality`, `print-darkness` where the firmware
+exposes it).
 
-AirPrint printers. Over Wi-Fi they appear driverless via Avahi; over USB,
-`ipp-usb` exposes them as IPP and `stencil-queue-setup` picks the
-`driverless:` entry. No vendor driver needed. Density/halftone are then IPP
-attributes (`print-quality`, `print-darkness` if the firmware exposes it).
+## Phomemo / QuYin (M08F, M08F Plus, M08F Pro, M08F-WS, M08FS, TP81–TP88, T08FS, …)
 
-## Phomemo M08F / M08F Plus / M08F Pro (and TP88, Ozer, ORGSTA rebrands)
+`pkgs/phomemo-cups` ships the vendor's Linux driver: three prebuilt x86_64
+CUPS filters (`rastertoM08F`, `rastertoD480`, `rastertolabelmxxx`; the M08F
+one bundles OpenCV) and 75 PPDs. Phomemo's own download page is
+JavaScript-only with no stable URL, so the build pulls the EasyOS repack
+(`phomemo-printer-driver-20260506.pet`, a gzip tarball with an md5 footer)
+from two mirrors that returned byte-identical files; the hash is pinned.
+`autoPatchelfHook` resolved every library (libcups, libcupsimage, zlib,
+libstdc++); nothing is missing at runtime.
 
-Phomemo's Linux driver contains prebuilt x86_64 CUPS filters
-(`rastertoM08F`, `rastertoD480`, `rastertolabel…`) and PPDs, but the
-download page is JavaScript-only with no stable URL, so the build cannot
-fetch it. Once:
+What was verified without hardware: the M08F filter reads the CUPS raster
+`pdftoraster` makes from the vendor PPD (203 dpi, RGB 8-bit, Letter and A4),
+converts the page ("gray end … 1568 x 2041"), and reports "Printed data has
+been sent". What needs the printer: before sending page data the filter
+polls printer status (`1f 11 09`) over the USB back channel and waits for
+the reply; with no printer attached it polls forever. That is normal for
+this driver and is why the queue is only created when the printer is
+physically present.
 
-1. Download the Linux driver from <https://phomemo.com/pages/drivers>
-   (Driver → Linux). The EasyOS repack at
-   `distro.ibiblio.org/easyos/amd64/packages/pet/pet_packages-excalibur/phomemo-printer-driver-20260506.pet`
-   is the same filters; `.pet` is accepted too.
-2. Save it as `vendor/phomemo-linux-driver.<zip|tar.gz|tar.xz|pet>`.
-   `vendor/` is git-ignored because the files are not redistributable;
-   for the laptop's nightly pull to build it, commit it to a **private**
-   fork or put the archive on the laptop and point the option at an
-   absolute path there.
-3. In `hosts/shop-laptop/default.nix`:
-   ```nix
-   flattoo.stencil.phomemo.enable = true;
-   flattoo.stencil.phomemo.driverArchive = ../../vendor/phomemo-linux-driver.zip;
-   ```
-4. `nix build .#nixosConfigurations.shop-laptop.config.system.build.toplevel`
-   prints the filters and PPDs it found.
+Options worth knowing: `Darkness` (Default/Fine/Medium/Thick/Dedicated),
+`DegreeOfBlackRecognition` 1–10 (threshold), `Resolution` 203 dpi,
+`PageSize` A4/Letter.
 
-Only USB is wired up; Phomemo's Linux filters do not speak Bluetooth.
+To use a newer archive from phomemo.com (zip, tar or .pet), set
+`flattoo.stencil.phomemo.driverArchive = ../../vendor/<file>;` — the install
+phase is layout-agnostic (any x86_64 `rasterto*` plus any PPDs).
+
+Only USB is wired up; the Linux filters do not speak Bluetooth.
+
+## Office printers and scanners
+
+Driverless IPP (AirPrint / Mopria / IPP Everywhere) over Wi-Fi and USB covers
+nearly everything sold since 2015. For the rest: `brlaser` (Brother lasers),
+`gutenprint`, `epson-escpr`, `hplip` (HP, including its scanner backend).
+Scanners: SANE, `sane-airscan` for Wi-Fi all-in-ones, `hplip`.
 
 ## Verify a new printer
 
 Print the calibration page (panel icon, or `stencil-calibrate`). The 4.00 in
 bar must measure 101.6 mm. Transfer the R to paper the way you would a
 stencil; it must read correctly. If the bar is off, something re-enabled
-scaling: `sudo stencil-queue-setup` resets the queue.
+scaling: **Fix Stencil Printer** resets the queue.

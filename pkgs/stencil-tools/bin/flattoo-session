@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Runs once per XFCE login (from /etc/xdg/autostart).
+#   1. HiDPI: on a screen at >= 170 dpi, set 2x scaling once. A marker file
+#      makes this a one-time seed so the artist's later choice sticks.
+#   2. Start the tablet-to-screen mapper in the background.
+set -uo pipefail
+
+STATE="${XDG_CONFIG_HOME:-$HOME/.config}/flattoo"
+mkdir -p "$STATE"
+
+hidpi_seed() {
+  [ -e "$STATE/hidpi-seeded" ] && return 0
+  command -v xrandr >/dev/null || return 0
+  # "eDP-1 connected primary 2880x1800+0+0 (normal ...) 302mm x 189mm"
+  line="$(xrandr --query 2>/dev/null | awk '/ connected primary/ {print; exit}')"
+  [ -n "$line" ] || line="$(xrandr --query 2>/dev/null | awk '/ connected/ {print; exit}')"
+  [ -n "$line" ] || return 0
+  px="$(printf '%s' "$line" | grep -oE '[0-9]+x[0-9]+\+' | head -n1 | cut -dx -f1)"
+  mm="$(printf '%s' "$line" | grep -oE '[0-9]+mm x' | head -n1 | cut -dm -f1)"
+  [ -n "$px" ] && [ -n "$mm" ] && [ "$mm" -gt 0 ] || return 0
+  dpi=$(( px * 254 / (mm * 10) ))
+  if [ "$dpi" -ge 170 ]; then
+    xfconf-query -c xsettings -p /Gdk/WindowScalingFactor -n -t int -s 2 2>/dev/null
+    xfconf-query -c xsettings -p /Xft/DPI -n -t int -s 192 2>/dev/null
+    xfconf-query -c xfwm4 -p /general/theme -n -t string -s Default-xhdpi 2>/dev/null
+    echo "flattoo-session: ${px}px over ${mm}mm = ${dpi} dpi, set 2x scaling" >&2
+  fi
+  touch "$STATE/hidpi-seeded"
+}
+
+hidpi_seed
+
+# Tablet mapper, one instance per session.
+if ! pgrep -u "$USER" -f 'flattoo-tablet-map --watch' >/dev/null 2>&1; then
+  nohup flattoo-tablet-map --watch >"$STATE/tablet-map.log" 2>&1 &
+fi

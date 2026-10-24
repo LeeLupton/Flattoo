@@ -13,25 +13,33 @@ upgrade is atomic, and the previous system is always one boot-menu entry away.
 | Sketch on paper | Simple Scan, then right-click → **Clean Lines** turns the pencil scan into black stencil lines. |
 | Print a stencil | Right-click any image/PDF → **Print as Stencil**. Asks for width in inches, prints 1:1 on the `Stencil` queue. |
 | Trust the size | **Stencil Printer Calibration** on the panel prints a ruler page: measure the 4.00 in bar. |
-| Phone photos | HEIC/WebP/AVIF open everywhere. LocalSend moves files phone ↔ laptop over the shop Wi-Fi, no cloud. |
-| Tablet | Wacom works out of the box; Huion/XP-Pen/Gaomon via one option (`flattoo.tablet.openTabletDriver`). |
-| Office printer | Driverless AirPrint/IPP over Wi-Fi and USB; Brother lasers via brlaser; Print to PDF. |
+| Printer acting up | **Fix Stencil Printer** in the menu re-detects it and clears stuck state. No password. |
+| Only a thermal copier | **Print as Stencil** offers the office printer and prints at true size on plain paper. |
+| Phone photos | HEIC/WebP/AVIF open everywhere. iPhone by cable (photo roll in the file manager after "Trust"), Android by cable (MTP), or LocalSend over the shop Wi-Fi, no cloud. |
+| Tablet | Wacom and most Huion/XP-Pen/Gaomon work on plug-in; display tablets are mapped to their own screen automatically. OpenTabletDriver is one option away for the rest. |
+| Screen | 4K laptop panels get 2x scaling on first login; a normal panel is left alone. |
+| Office printer | Driverless AirPrint/IPP over Wi-Fi and USB; brlaser, gutenprint, Epson, HP drivers for the rest; Print to PDF. |
 | Browser | Firefox with uBlock Origin, telemetry and sponsored tiles off. |
+| One thing to remember | The disk passphrase doubles as the screen-unlock password unless the installer is told otherwise. |
 | Not thinking about it | Lid = sleep, lock on wake, disk encrypted, nightly upgrades that never touch the running session. |
 
 Desktop is XFCE on X11: tablet pressure and cursor behavior are solid there.
 
 ## Stencil printers
 
-* **Brother PocketJet PJ-723** (the Brother S8 stencil kit): vendor LPR +
-  CUPS wrapper, fetched from `download.brother.com` at build time and
-  verified end to end (PostScript → Brother raster, options honored).
-* **Brother PJ-8xx** (PJ-883 etc.): driverless over Wi-Fi or USB (`ipp-usb`).
-* **Phomemo M08F family**: supported through Phomemo's Linux filters, which
-  you must download once — see [docs/printers.md](docs/printers.md).
+* **Brother PocketJet 7** — PJ-722, PJ-723 (the Brother S8 stencil kit),
+  PJ-762, PJ-763, PJ-773: vendor LPR + CUPS wrapper per model, fetched from
+  `download.brother.com` at build time; PJ-723 and PJ-773 chains verified
+  end to end (PostScript → Brother raster, options honored).
+* **Brother PocketJet 8** — PJ-822/823/862/863/883: driverless over Wi-Fi or
+  USB (`ipp-usb`), no driver needed.
+* **Phomemo / QuYin** — M08F, M08F Plus/Pro/WS/S, TP81–TP88, T08FS and 70
+  more: the vendor's Linux filters and PPDs are built in (pinned archive,
+  two mirrors agreed on the hash).
 
 Plug the printer in; the `Stencil` queue appears by itself with Letter,
-no scaling, binary halftone and the configured density.
+no scaling, and the right driver options. Details and what was verified
+without hardware: [docs/printers.md](docs/printers.md).
 
 Stencil paper flips the image twice (carbon onto the top sheet, top sheet
 onto skin), so designs print **without** mirroring by default. The
@@ -45,10 +53,11 @@ hosts/shop-laptop/           the studio laptop: flattoo.* settings, disk layout
 hosts/installer/             installer ISO + the flattoo-install wizard
 modules/                     base, desktop, art, printing, stencil, media,
                              laptop, security, remote, extras, autoupgrade
-pkgs/brother-pj/             PJ-723 LPR + CUPS wrapper derivations
-pkgs/phomemo-m08f/           Phomemo filters from the vendor archive
-pkgs/stencil-tools/          stencil-print, stencil-clean-lines,
-                             stencil-calibrate, stencil-queue-setup (+ tests)
+pkgs/brother-pj/             PocketJet 7 LPR + CUPS wrapper derivations (5 models)
+pkgs/phomemo-cups/           Phomemo/QuYin vendor filters + 75 PPDs
+pkgs/stencil-tools/          stencil-print, stencil-clean-lines, stencil-calibrate,
+                             stencil-queue-setup, stencil-fix-printer,
+                             flattoo-session, flattoo-tablet-map (+ tests)
 files/                       XFCE panel/screensaver/power defaults, Thunar actions
 docs/                        install, printers, maintenance
 .github/workflows/           weekly lock bump + eval gate; per-push checks
@@ -59,9 +68,10 @@ docs/                        install, printers, maintenance
 1. `nix build .#iso` → `result-iso/iso/flattoo-installer-*.iso`. Write it to a
    USB stick (`dd if=... of=/dev/sdX bs=4M status=progress`).
 2. Boot the laptop from it (UEFI). `nmtui` for Wi-Fi, then `sudo flattoo-install`.
-3. It asks for the target disk, a disk-encryption passphrase, and passwords
-   for `artist` and `lee`, then partitions (GPT, 1 GiB ESP, LUKS2, btrfs),
-   installs, and writes the EFI boot entry. 10-25 minutes.
+3. It asks for the target disk, a disk-encryption passphrase (Enter reuses
+   it as the artist's screen-unlock password), and a sudo password for
+   `lee`, then partitions (GPT, 1 GiB ESP, LUKS2, btrfs), installs, and
+   writes the EFI boot entry. 10-25 minutes.
 4. Reboot. Passphrase prompt, then the artist's desktop.
 
 Full walkthrough: [docs/install.md](docs/install.md).
@@ -85,6 +95,6 @@ More: [docs/maintenance.md](docs/maintenance.md).
 
 All in `hosts/shop-laptop/default.nix`, documented in `modules/default.nix`:
 user and admin names, auto-login, lock on suspend, OpenTabletDriver,
-stencil density, Phomemo driver, AI extras (Upscayl, Real-ESRGAN, rembg —
-off by default, nothing in the base image), Tailscale, SSH, upgrade time,
-latest kernel.
+stencil density, Brother/Phomemo drivers, AI extras (Upscayl, Real-ESRGAN,
+rembg — off by default, nothing in the base image), Tailscale, SSH, upgrade
+time, latest kernel.

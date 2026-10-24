@@ -185,6 +185,14 @@ def queue_exists(queue: str = QUEUE) -> bool:
     return shutil.which("lpstat") is not None and run(["lpstat", "-p", queue]).returncode == 0
 
 
+def list_queues() -> list[str]:
+    """Names of all CUPS queues that accept jobs."""
+    out = run(["lpstat", "-a"])
+    if out.returncode != 0:
+        return []
+    return [line.split()[0] for line in out.stdout.splitlines() if " accepting " in line]
+
+
 def queue_options(queue: str = QUEUE) -> dict[str, tuple[str, list[str]]]:
     """Parse `lpoptions -l`: {option: (default, [choices])}."""
     out = run(["lpoptions", "-p", queue, "-l"])

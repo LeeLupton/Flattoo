@@ -16,6 +16,11 @@
   gnugrep,
   gnused,
   coreutils,
+  procps,
+  systemd,
+  xrandr,
+  xinput,
+  xfconf,
   runCommand,
   poppler-utils,
 }:
@@ -36,6 +41,11 @@ let
     gnugrep
     gnused
     coreutils
+    procps
+    systemd
+    xrandr
+    xinput
+    xfconf
   ];
 in
 stdenv.mkDerivation (finalAttrs: {
@@ -64,9 +74,11 @@ stdenv.mkDerivation (finalAttrs: {
       wrapProgram $out/bin/$tool --prefix PATH : ${runtimePath}
     done
 
-    install -m755 bin/stencil-queue-setup $out/bin/stencil-queue-setup
-    patchShebangs $out/bin/stencil-queue-setup
-    wrapProgram $out/bin/stencil-queue-setup --prefix PATH : ${runtimePath}
+    for tool in stencil-queue-setup stencil-fix-printer flattoo-session flattoo-tablet-map; do
+      install -m755 bin/$tool $out/bin/$tool
+      patchShebangs $out/bin/$tool
+      wrapProgram $out/bin/$tool --prefix PATH : $out/bin:${runtimePath}
+    done
 
     cp share/applications/*.desktop $out/share/applications/
     runHook postInstall
@@ -147,7 +159,7 @@ stdenv.mkDerivation (finalAttrs: {
       '';
 
   meta = {
-    description = "Print tattoo stencils at true size; clean scanned sketches; calibrate the stencil printer";
+    description = "Print tattoo stencils at true size; clean scanned sketches; calibrate and auto-configure the stencil printer; tablet and HiDPI session helpers";
     license = lib.licenses.mit;
     platforms = lib.platforms.linux;
     mainProgram = "stencil-print";

@@ -88,8 +88,26 @@ def main(argv=None):
 
     try:
         if not args.dry_run and not sc.queue_exists(args.queue):
-            raise sc.StencilError(
-                f"No '{args.queue}' printer. Plug the stencil printer in by USB and wait a few seconds.")
+            if not gui:
+                raise sc.StencilError(
+                    f"No '{args.queue}' printer. Plug the stencil printer in by USB and wait a few seconds, "
+                    f"or pass --queue <other printer> to print at true size on plain paper for a thermal copier.")
+            # Thermal-copier workflow: print 1:1 on whatever printer exists, then
+            # run the sheet through the copier with stencil paper.
+            others = [q for q in sc.list_queues() if q != args.queue]
+            if not others:
+                raise sc.StencilError(
+                    "No stencil printer and no other printer. Plug the stencil printer in by USB "
+                    "and wait a few seconds, then try again.")
+            rc, pick = sc.zenity(
+                "--list", "--title=No stencil printer", "--width=460", "--height=300",
+                "--text=The stencil printer is not plugged in.\n\n"
+                "Print at true size on another printer instead? For a thermal copier: print on plain paper, "
+                "then run that sheet through the copier with stencil paper.",
+                "--column=Printer", *others, "--ok-label=Print there", "--cancel-label=Cancel")
+            if rc != 0 or not pick:
+                return 1
+            args.queue = pick.strip()
 
         img, native_dpi = sc.rasterize(Path(args.file))
         gray = sc.gray_on_white(img)

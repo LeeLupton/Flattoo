@@ -63,15 +63,25 @@
       packages.${system} = {
         inherit (pkgs)
           stencil-tools
+          phomemo-cups
           brother-pj723-lpr
           brother-pj723-cupswrapper
           ;
+        # All five PocketJet 7 drivers in one tree: `nix build .#brother-pj`
+        brother-pj = pkgs.linkFarm "brother-pj-drivers" (
+          map (d: {
+            name = d.pname;
+            path = d;
+          }) pkgs.brother-pj-cupswrappers
+        );
         iso = self.nixosConfigurations.installer.config.system.build.isoImage;
         default = pkgs.stencil-tools;
       };
 
       checks.${system} = {
         stencil-tools = pkgs.stencil-tools.tests.roundtrip;
+        brother-pj = self.packages.${system}.brother-pj;
+        phomemo-cups = pkgs.phomemo-cups;
         shop-laptop-eval = self.nixosConfigurations.shop-laptop.config.system.build.toplevel;
       };
 

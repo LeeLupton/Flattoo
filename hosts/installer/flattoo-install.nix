@@ -23,10 +23,11 @@ pkgs.writeShellApplication {
 
     bold() { printf '\033[1m%s\033[0m\n' "$*"; }
     die()  { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
-    ask_secret() { # ask_secret "prompt" minlen  -> prints the secret on stdout
+    ask_secret() { # ask_secret "prompt" minlen [default]  -> prints the secret on stdout
       local v1 v2
       while true; do
         read -rsp "$1: " v1; echo >&2
+        if [ -z "$v1" ] && [ -n "''${3:-}" ]; then printf '%s' "$3"; return; fi
         read -rsp "$1 (again): " v2; echo >&2
         if [ "$v1" != "$v2" ]; then echo "  They differ. Try again." >&2; continue; fi
         if [ "''${#v1}" -lt "$2" ]; then echo "  At least $2 characters." >&2; continue; fi
@@ -70,7 +71,9 @@ pkgs.writeShellApplication {
     LUKS_PASS="$(ask_secret "Passphrase" 8)"
     echo
     bold "Account passwords"
-    ARTIST_PASS="$(ask_secret "Password for 'artist' (unlocks the screen after sleep)" 4)"
+    echo "The artist has one thing to remember: the disk passphrase. Press Enter to use it"
+    echo "for the screen lock too, or type a different password."
+    ARTIST_PASS="$(ask_secret "Password for 'artist' [Enter = same as disk passphrase]" 4 "$LUKS_PASS")"
     ADMIN_PASS="$(ask_secret "Password for 'lee' (sudo)" 8)"
 
     # 4. Writable copy of the flake + machine-specific bits.

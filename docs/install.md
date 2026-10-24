@@ -39,7 +39,7 @@ It asks, in order:
 | Install to which disk | the name from the list, e.g. `nvme0n1` |
 | Type the disk name again | same name; this erases the disk |
 | Passphrase | disk encryption; typed at every power-on; 8+ chars |
-| Password for `artist` | unlocks the screen after sleep; short is fine |
+| Password for `artist` | Enter = same as the passphrase (one thing to remember); or a different one |
 | Password for `lee` | sudo; 8+ chars |
 
 Then it partitions (1 GiB ESP, LUKS2, btrfs with `@root @home @nix @log`),
@@ -49,9 +49,11 @@ installs, writes the EFI entry, and prints "Done". `reboot`.
 
 * Passphrase prompt → auto-login as `artist` → XFCE.
 * Plug the stencil printer in. Wait ten seconds. Print the calibration page
-  from the panel icon.
-* Pair the phone with LocalSend (same Wi-Fi) if the artist wants transfers.
-* Tablet: Wacom works. Huion/XP-Pen: if pressure is missing, set
+  from the panel icon. If nothing appears, menu → **Fix Stencil Printer**.
+* Phone: iPhone by cable ("Trust this computer" on the phone, then it is in
+  the file manager sidebar), Android by cable, or LocalSend over Wi-Fi.
+* Tablet: plug it in. Display tablets map to their own screen on their own.
+  If a Huion/XP-Pen/Gaomon has no pressure, set
   `flattoo.tablet.openTabletDriver = true` in the repo and push.
 
 ## What the installer left behind

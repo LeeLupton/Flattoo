@@ -39,8 +39,8 @@
 
     stencil = {
       enable = true;
-      brother.enable = true; # PJ-723 (Brother S8 stencil printer)
-      phomemo.enable = false; # see docs/printers.md to turn on
+      brother.enable = true; # PocketJet 7: PJ-722/723/762/763/773 (S8 kit = PJ-723)
+      phomemo.enable = true; # M08F family, TP8x; vendor archive pinned in pkgs/phomemo-cups
       density = 6;
     };
 

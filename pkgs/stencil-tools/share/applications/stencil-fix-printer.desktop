@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Fix Stencil Printer
+Comment=Find the stencil printer again and clear any stuck state
+Exec=stencil-fix-printer
+Icon=printer
+Terminal=false
+Categories=Graphics;Printing;Settings;
+Keywords=stencil;printer;fix;usb;

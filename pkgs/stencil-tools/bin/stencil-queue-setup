@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 # Create or re-point the CUPS queue "Stencil" for whatever stencil printer is
 # attached, with stencil defaults. Runs as root from the udev-triggered
-# systemd unit; also safe to run by hand.
+# systemd unit (any USB printer appearing), 45 s after boot, and from the
+# "Fix Stencil Printer" menu entry. Safe to run by hand.
+#
+# Recognized:
+#   Brother PocketJet 7  usb://Brother/PJ-7xx   -> vendor PPD for that model
+#   Brother PocketJet 8  driverless (ipp-usb or Wi-Fi) -> everywhere
+#   Phomemo / QuYin      usb://<vendor>/<model> -> vendor PPD whose name is the
+#                        longest prefix of the model string (M08F-WS-Q803 ->
+#                        M08F-WS, M08F_PLUS -> M08F, TP88 -> TP88)
 set -euo pipefail
 
 QUEUE="${FLATTOO_QUEUE:-Stencil}"
@@ -16,38 +24,64 @@ for _ in $(seq 1 30); do
 done
 lpstat -r >/dev/null 2>&1 || { log "cups is not running"; exit 0; }
 
-uri=""
-ppd=""
-kind=""
+models_list="$(lpinfo -m 2>/dev/null || true)"
+
+# ppd_for_prefix <model-string>: longest Phomemo PPD whose basename is a
+# case-insensitive prefix of the model string (after normalising _ and space to -).
+ppd_for_prefix() {
+  local want norm best bestlen line ppd base b
+  want="$1"
+  norm="$(printf '%s' "$want" | tr '_ ' '--' | tr '[:upper:]' '[:lower:]')"
+  best=""; bestlen=0
+  while IFS= read -r line; do
+    ppd="${line%% *}"
+    case "$ppd" in Phomemo/*|*/qy/*) ;; *) continue ;; esac
+    base="$(basename "$ppd" .ppd)"
+    b="$(printf '%s' "$base" | tr '_ ' '--' | tr '[:upper:]' '[:lower:]')"
+    if [ "${norm#"$b"}" != "$norm" ] && [ "${#b}" -gt "$bestlen" ]; then
+      best="$ppd"; bestlen="${#b}"
+    fi
+  done <<<"$models_list"
+  printf '%s' "$best"
+}
+
+uri=""; ppd=""; kind=""
 
 # 1. USB devices CUPS can see.
 while read -r _ u _; do
   case "$u" in
-    usb://Brother/PJ-7*|usb://Brother/PJ-8*)
-      model="$(printf '%s' "$u" | sed -E 's#usb://Brother/(PJ-[0-9]+).*#\1#')"
-      short="$(printf '%s' "$model" | tr -d '-' | tr '[:upper:]' '[:lower:]')"   # pj723
-      # Vendor PPD for this exact model, if installed.
-      ppd="$(lpinfo -m 2>/dev/null | awk -v s="$short" 'tolower($1) ~ ("brother_" s "_printer") {print $1; exit}')"
+    usb://Brother/PJ-7*)
+      model="$(printf '%s' "$u" | sed -E 's#usb://Brother/(PJ-[0-9]+).*#\1#' | tr -d '-' | tr '[:upper:]' '[:lower:]')"  # pj723
+      ppd="$(printf '%s\n' "$models_list" | awk -v s="$model" 'tolower($1) ~ ("brother_" s "_printer") {print $1; exit}')"
       uri="$u"; kind="brother"; break ;;
-    usb://*M08F*|usb://*Phomemo*|usb://*QuYin*)
-      ppd="$(lpinfo -m 2>/dev/null | awk 'tolower($0) ~ /phomemo/ && tolower($0) ~ /m08f/ {print $1; exit}')"
-      [ -n "$ppd" ] || ppd="$(lpinfo -m 2>/dev/null | awk 'tolower($0) ~ /m08f/ {print $1; exit}')"
-      uri="$u"; kind="phomemo"; break ;;
+    usb://Brother/PJ-8*)
+      # Prefer the driverless (ipp-usb) path below; fall through only if that is absent.
+      uri="$u"; kind="brother-raw" ;;
+    usb://*)
+      vendor="$(printf '%s' "$u" | sed -E 's#usb://([^/]+)/.*#\1#')"
+      model="$(printf '%s' "$u" | sed -E 's#usb://[^/]+/([^?]+).*#\1#' | sed 's/%20/ /g')"
+      case "$vendor $model" in
+        *[Pp]homemo*|*QuYin*|*QUYIN*|*M08*|*TP8[0-9]*|*T08*|*M0[0-9]*)
+          cand="$(ppd_for_prefix "$model")"
+          if [ -n "$cand" ]; then
+            uri="$u"; ppd="$cand"; kind="phomemo"; break
+          fi ;;
+      esac ;;
   esac
 done < <(lpinfo -v 2>/dev/null || true)
 
 # 2. Driverless (PJ-8xx over ipp-usb or Wi-Fi). lpinfo -m lists these as driverless:ipp://...
-if [ -z "$uri" ]; then
-  line="$(lpinfo -m 2>/dev/null | grep -i 'driverless:.*PJ-8' | head -n1 || true)"
+if [ -z "$uri" ] || [ "$kind" = "brother-raw" ]; then
+  line="$(printf '%s\n' "$models_list" | grep -i 'driverless:.*PJ-8' | head -n1 || true)"
   if [ -n "$line" ]; then
-    ppd="$(printf '%s' "$line" | awk '{print $1}')"
+    ppd="${line%% *}"
     uri="${ppd#driverless:}"
     kind="driverless"
   fi
 fi
 
 if [ -z "$uri" ]; then
-  log "no stencil printer found (lpinfo -v shows: $(lpinfo -v 2>/dev/null | awk '{print $2}' | tr '\n' ' '))"
+  log "no stencil printer found (usb: $(lpinfo -v 2>/dev/null | awk '/usb:/ {print $2}' | tr '\n' ' '))"
   exit 0
 fi
 
@@ -65,13 +99,14 @@ else
   if [ -n "$ppd" ]; then
     lpadmin -p "$QUEUE" -E -v "$uri" -m "$ppd" -D "Stencil printer" -L "Studio"
   else
-    log "no PPD for this model; adding as raw/driverless"
+    log "no PPD for this model; adding as driverless/raw"
     lpadmin -p "$QUEUE" -E -v "$uri" -m everywhere -D "Stencil printer" -L "Studio" \
       || lpadmin -p "$QUEUE" -E -v "$uri" -D "Stencil printer" -L "Studio"
   fi
 fi
 
-# Stencil defaults: no scaling, letter if the PPD has it, monochrome, not shared.
+# Stencil defaults: no scaling, Letter if the PPD has it, monochrome, not shared,
+# and never leave the queue stopped after a paper-out or unplug.
 media=Letter
 lpoptions -p "$QUEUE" -l 2>/dev/null | grep -q '^PageSize.*\bLetter\b' || media=A4
 lpadmin -p "$QUEUE" \
@@ -81,11 +116,16 @@ lpadmin -p "$QUEUE" \
   -o printer-is-shared=false \
   -o printer-error-policy=retry-current-job || true
 
-if [ "$kind" = "brother" ]; then
-  # Binary halftone keeps line art crisp; density from flattoo.stencil.density.
-  lpadmin -p "$QUEUE" -o BrHalftonePattern=BrBinary -o "BrDensity=$DENSITY" -o BrMirror=OFF 2>/dev/null || true
-fi
+case "$kind" in
+  brother)
+    # Binary halftone keeps line art crisp; density from flattoo.stencil.density.
+    lpadmin -p "$QUEUE" -o BrHalftonePattern=BrBinary -o "BrDensity=$DENSITY" -o BrMirror=OFF 2>/dev/null || true ;;
+  phomemo)
+    # Vendor options: Darkness (Default/Light/Dark...), DegreeOfBlackRecognition 1-10.
+    lpadmin -p "$QUEUE" -o ColorOption=GrayScale -o Rotate=0 2>/dev/null || true ;;
+esac
 
 cupsenable "$QUEUE" 2>/dev/null || true
 cupsaccept "$QUEUE" 2>/dev/null || true
-log "queue $QUEUE ready ($media, no scaling)"
+lpadmin -p "$QUEUE" -E 2>/dev/null || true
+log "queue $QUEUE ready ($kind, $media, no scaling)"

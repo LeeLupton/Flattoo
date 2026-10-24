@@ -22,7 +22,10 @@ in
   # Scanners: USB via SANE, Wi-Fi all-in-ones via AirScan/eSCL (driverless).
   hardware.sane = {
     enable = true;
-    extraBackends = [ pkgs.sane-airscan ];
+    extraBackends = [
+      pkgs.sane-airscan
+      pkgs.hplip
+    ];
   };
 
   # Tablets ---------------------------------------------------------------
