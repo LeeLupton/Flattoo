@@ -21,8 +21,11 @@
   xrandr,
   xinput,
   xfconf,
+  bluez,
   runCommand,
   poppler-utils,
+  cups-filters,
+  phomemo-cups,
 }:
 let
   py = python3.withPackages (
@@ -46,6 +49,7 @@ let
     xrandr
     xinput
     xfconf
+    bluez # bluetoothctl, sdptool
   ];
 in
 stdenv.mkDerivation (finalAttrs: {
@@ -60,14 +64,14 @@ stdenv.mkDerivation (finalAttrs: {
 
   installPhase = ''
     runHook preInstall
-    mkdir -p $out/bin $out/lib/flattoo $out/share/applications
+    mkdir -p $out/bin $out/lib/flattoo $out/lib/cups/backend $out/share/applications
 
     cp lib/stencil_common.py $out/lib/flattoo/
 
-    for tool in stencil-print stencil-clean-lines stencil-calibrate; do
+    for tool in stencil-print stencil-clean-lines stencil-calibrate stencil-bt-setup; do
       install -m755 bin/$tool $out/bin/$tool
       substituteInPlace $out/bin/$tool \
-        --replace-fail '@libdir@' "$out/lib/flattoo" \
+        --replace-quiet '@libdir@' "$out/lib/flattoo" \
         --replace-quiet '@dejavu@' "${dejavu_fonts}"
       # The shebang goes to the python with Pillow/numpy; PATH gets magick, lp, zenity.
       sed -i "1s|.*|#!${py}/bin/python3|" $out/bin/$tool
@@ -80,9 +84,38 @@ stdenv.mkDerivation (finalAttrs: {
       wrapProgram $out/bin/$tool --prefix PATH : $out/bin:${runtimePath}
     done
 
+    # CUPS backend for bluetooth://MAC/channel. Merged into CUPS' backend
+    # directory by services.printing.drivers. Runs as the lp user.
+    install -m755 backend/bluetooth $out/lib/cups/backend/bluetooth
+    sed -i "1s|.*|#!${py}/bin/python3|" $out/lib/cups/backend/bluetooth
+    wrapProgram $out/lib/cups/backend/bluetooth --prefix PATH : ${lib.makeBinPath [ bluez ]}
+
     cp share/applications/*.desktop $out/share/applications/
     runHook postInstall
   '';
+
+  # Offline Phomemo print path through the Bluetooth backend, against a fake
+  # printer that speaks the status protocol decoded from the vendor filter.
+  passthru.tests.phomemoChain =
+    runCommand "stencil-tools-phomemo-chain"
+      {
+        nativeBuildInputs = [
+          finalAttrs.finalPackage
+          py
+        ];
+      }
+      ''
+        export HOME=$TMPDIR
+        cd $TMPDIR
+        stencil-calibrate --dry-run cal.pdf
+        python3 ${./tests/phomemo_chain.py} \
+          ${cups-filters}/lib/cups/filter/pdftoraster \
+          ${phomemo-cups}/lib/cups/filter/rastertoM08F \
+          ${phomemo-cups}/share/cups/model/Phomemo/M08F.ppd \
+          ${finalAttrs.finalPackage}/lib/cups/backend/bluetooth \
+          cal.pdf
+        touch $out
+      '';
 
   passthru.tests.roundtrip =
     runCommand "stencil-tools-roundtrip"

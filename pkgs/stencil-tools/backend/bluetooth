@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+"""CUPS backend: bluetooth://AA:BB:CC:DD:EE:FF/<rfcomm-channel>
+
+Carries a print job over a Bluetooth Classic serial (SPP / RFCOMM) link and
+relays whatever the printer says back to the filter on the CUPS back channel.
+That relay is what lets vendor filters that interrogate the printer before
+printing (Phomemo's rastertoM08F asks for name, firmware, paper, busy; Brother's
+PJ driver can) work exactly as they do over USB.
+
+The scheme name is deliberate: Phomemo's filter looks for "bluetooth:" in
+DEVICE_URI and switches to its Bluetooth mode.
+
+Called by CUPS as:
+  bluetooth                                   -> discovery (paired printers)
+  bluetooth job user title copies options [file] -> print
+
+Exit codes follow cups/backend.h: 0 ok, 1 failed, 6 retry later.
+Test hook: FLATTOO_BT_FAKE_SOCKET=/path makes it talk to a Unix socket instead.
+"""
+
+import os
+import re
+import select
+import socket
+import struct
+import subprocess
+import sys
+import threading
+import time
+
+BACKEND_OK, BACKEND_FAILED, BACKEND_RETRY = 0, 1, 6
+PRINTER_NAMES = re.compile(r"(M0[0-9]|M08|TP8[0-9]|T08|Phomemo|QuYin|PJ-?[678][0-9]{2}|Brother|Stencil)", re.I)
+
+
+def log(level, msg):
+    sys.stderr.write(f"{level}: {msg}\n")
+    sys.stderr.flush()
+
+
+# ----------------------------------------------------------------- discovery
+
+def discovery():
+    """List paired devices that look like printers, in CUPS backend format."""
+    try:
+        out = subprocess.run(["bluetoothctl", "devices", "Paired"], capture_output=True, text=True, timeout=10).stdout
+    except Exception:  # noqa: BLE001
+        out = ""
+    for line in out.splitlines():
+        m = re.match(r"Device\s+([0-9A-F:]{17})\s+(.*)", line.strip(), re.I)
+        if not m:
+            continue
+        mac, name = m.group(1).upper(), m.group(2).strip()
+        if not PRINTER_NAMES.search(name):
+            continue
+        chan = cached_channel(mac)
+        mfg = "Brother" if re.search(r"PJ-?[678]", name, re.I) else "Phomemo"
+        print(f'direct bluetooth://{mac}/{chan} "{mfg} {name}" "{name} (Bluetooth)" "MFG:{mfg};MDL:{name};" ""')
+    sys.stdout.flush()
+    return BACKEND_OK
+
+
+def cached_channel(mac):
+    """RFCOMM channel found by stencil-bt-setup (sdptool), else 1."""
+    for base in ("/var/lib/flattoo", os.path.expanduser("~/.config/flattoo")):
+        p = os.path.join(base, f"bt-{mac.replace(':', '')}.channel")
+        try:
+            with open(p) as f:
+                return int(f.read().strip())
+        except (OSError, ValueError):
+            pass
+    return 1
+
+
+# ----------------------------------------------------------------- transport
+
+def parse_uri(uri):
+    m = re.match(r"bluetooth://([0-9A-Fa-f:]{17})(?:/(\d+))?", uri)
+    if not m:
+        raise ValueError(f"bad device URI {uri!r}; expected bluetooth://AA:BB:CC:DD:EE:FF/<channel>")
+    return m.group(1).upper(), int(m.group(2) or 1)
+
+
+def connect(mac, channel, deadline=90.0):
+    fake = os.environ.get("FLATTOO_BT_FAKE_SOCKET")
+    t0 = time.time()
+    last = None
+    log("STATE", "+connecting-to-device")
+    while True:
+        try:
+            if fake:
+                s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                s.connect(fake)
+            else:
+                s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
+                s.settimeout(15)
+                s.connect((mac, channel))
+            s.settimeout(None)
+            log("STATE", "-connecting-to-device")
+            return s
+        except OSError as e:
+            last = e
+            if time.time() - t0 > deadline:
+                raise last
+            log("INFO", f"Printer {mac} not answering ({e.strerror or e}); is it switched on? retrying")
+            time.sleep(5)
+
+
+def side_channel_thread(stop):
+    """Answer CUPS side-channel requests on fd 4 (DRAIN_OUTPUT, GET_STATE, ...)."""
+    try:
+        os.fstat(4)
+    except OSError:
+        return
+    while not stop.is_set():
+        r, _, _ = select.select([4], [], [], 0.5)
+        if not r:
+            continue
+        try:
+            hdr = os.read(4, 4)
+        except OSError:
+            return
+        if len(hdr) < 4:
+            return
+        cmd, _status, dlen = hdr[0], hdr[1], struct.unpack(">H", hdr[2:4])[0]
+        if dlen:
+            os.read(4, dlen)
+        if cmd == 5:      # CUPS_SC_CMD_GET_STATE
+            resp = bytes([1])  # ONLINE
+        elif cmd == 3:    # GET_BIDI
+            resp = bytes([1])  # supported
+        elif cmd == 8:    # GET_CONNECTED
+            resp = bytes([1])
+        elif cmd == 4:    # GET_DEVICE_ID
+            resp = os.environ.get("FLATTOO_BT_DEVICE_ID", "MFG:Bluetooth;MDL:Serial printer;").encode()
+        else:             # SOFT_RESET, DRAIN_OUTPUT, SNMP...
+            resp = b""
+        try:
+            os.write(4, bytes([cmd, 0]) + struct.pack(">H", len(resp)) + resp)
+        except OSError:
+            return
+
+
+def backchannel_thread(sock, stop, stats):
+    """Printer -> fd 3 (CUPS back channel) so the filter sees status replies."""
+    try:
+        os.fstat(3)
+        have_bc = True
+    except OSError:
+        have_bc = False
+    while not stop.is_set():
+        r, _, _ = select.select([sock], [], [], 0.5)
+        if not r:
+            continue
+        try:
+            data = sock.recv(4096)
+        except OSError:
+            break
+        if not data:
+            break
+        stats["from_printer"] += len(data)
+        if have_bc:
+            try:
+                os.write(3, data)
+            except OSError:
+                have_bc = False
+
+
+def print_job(argv):
+    uri = os.environ.get("DEVICE_URI", "")
+    mac, channel = parse_uri(uri)
+    src = open(argv[6], "rb") if len(argv) > 6 else sys.stdin.buffer
+    copies = max(1, int(argv[4])) if len(argv) > 4 and argv[4].isdigit() else 1
+
+    try:
+        sock = connect(mac, channel)
+    except OSError as e:
+        log("ERROR", f"Cannot connect to {mac} channel {channel}: {e}")
+        return BACKEND_RETRY
+
+    stop = threading.Event()
+    stats = {"from_printer": 0, "to_printer": 0}
+    threading.Thread(target=side_channel_thread, args=(stop,), daemon=True).start()
+    threading.Thread(target=backchannel_thread, args=(sock, stop, stats), daemon=True).start()
+
+    log("STATE", "+sending-data")
+    rc = BACKEND_OK
+    try:
+        if len(argv) > 6:
+            data = src.read()
+            for _ in range(copies):
+                for i in range(0, len(data), 4096):
+                    sock.sendall(data[i:i + 4096])
+                    stats["to_printer"] += len(data[i:i + 4096])
+        else:
+            # Partial reads matter: the filter sends a 3-byte status query and
+            # waits for the answer before it sends anything else.
+            fd = src.fileno()
+            while True:
+                chunk = os.read(fd, 65536)
+                if not chunk:
+                    break
+                sock.sendall(chunk)
+                stats["to_printer"] += len(chunk)
+        # Let the printer finish talking (status after the last page) before hanging up.
+        time.sleep(2.0)
+    except OSError as e:
+        log("ERROR", f"Bluetooth link to {mac} dropped after {stats['to_printer']} bytes: {e}")
+        rc = BACKEND_FAILED
+    finally:
+        log("STATE", "-sending-data")
+        stop.set()
+        try:
+            sock.close()
+        except OSError:
+            pass
+        if len(argv) > 6:
+            src.close()
+    log("INFO", f"Sent {stats['to_printer']} bytes to {mac}; printer replied with {stats['from_printer']} bytes")
+    return rc
+
+
+def main(argv):
+    if len(argv) == 1:
+        return discovery()
+    if len(argv) not in (6, 7):
+        log("ERROR", "Usage: bluetooth job-id user title copies options [file]")
+        return BACKEND_FAILED
+    try:
+        return print_job(argv)
+    except ValueError as e:
+        log("ERROR", str(e))
+        return BACKEND_FAILED
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

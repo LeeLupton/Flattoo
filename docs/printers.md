@@ -33,6 +33,60 @@ No stencil printer at all? **Print as Stencil** offers the other printers on
 the laptop and prints at true size on plain paper, for shops that transfer
 with a thermal copier.
 
+## Bluetooth
+
+Phomemo/QuYin printers and the Bluetooth PocketJets (PJ-762/763/773) talk
+Bluetooth Classic serial (SPP, RFCOMM). Two pieces make that a normal CUPS
+queue:
+
+* `bluetooth://MAC/channel` **backend** (`pkgs/stencil-tools/backend/bluetooth`,
+  Python on the kernel's native RFCOMM sockets). It streams the job to the
+  printer and relays everything the printer says back to the filter on the
+  CUPS back channel, and answers the side channel. The scheme name matters:
+  Phomemo's filter looks for `bluetooth:` in `DEVICE_URI` and switches to
+  its Bluetooth mode. Discovery (`lpinfo -v`) lists paired printers.
+* **Add Bluetooth Stencil Printer** (menu; `stencil-bt-setup`): scans 12 s,
+  lists what it found, pairs (tries 0000 / 1234 / `default` / 1111 before
+  asking for a PIN), trusts, reads the serial-port channel with `sdptool`
+  (default 1), and calls `stencil-queue-setup --uri bluetooth://MAC/ch
+  --model <name>`. **Fix Stencil Printer** and the boot check also fall
+  back to a paired Bluetooth printer when nothing is on USB; a USB cable
+  takes precedence while it is plugged in.
+
+### The Phomemo status protocol (decoded from `rastertoM08F`)
+
+The vendor filter interrogates the printer before and during a job. Without
+answers it polls forever, which is why plain `rfcomm`+`serial://` would not
+work. Queries are three bytes, replies start with `1a`:
+
+| Filter sends | Meaning | Printer answers |
+|---|---|---|
+| `1f 11 09` | name / serial | `1a 08` + 15 bytes |
+| `1f 11 07` | firmware version | `1a 07 vv vv vv` |
+| `1f 11 11` | paper? | `1a 06 89` present, `1a 06 88` out |
+| `1f 11 12` | busy? | `1a 05 98` idle, `1a 05 99` busy |
+| `1f 11 43` | ready | `1a 0f 0c` |
+| `1f 11 35 00` | sent before data in Bluetooth mode | — |
+| — | temperature | `1a 03 a8` ok, `1a 03 a9` overheated |
+| — | job canceled | `1a 0b b8` |
+| — | transfer error | `1a 70` |
+
+In Bluetooth mode the filter asks only for the name and skips the
+paper/busy gating. In USB mode it asks name, paper, busy, paper, then
+prints. Page data is ESC/POS raster (`1d 76 30`, 196 bytes = 1568 px wide
+at 203 dpi for Letter).
+
+`checks.phomemo-chain` runs the whole path offline every build: PDF →
+`pdftoraster` (vendor PPD) → `rastertoM08F` → `bluetooth` backend → a fake
+printer that answers with the packets above. It asserts both processes exit
+0 and the printer received a 1568 px wide raster page.
+
+What still needs the real printer: that its SPP channel accepts the stream
+(the phone apps use the same transport and command set) and the PIN, which
+varies by model. Brother PJ over Bluetooth is wired the same way but
+unverified beyond the raster chain; Brother's own Linux support statement
+is "via USB".
+
 ## Brother PocketJet 7 (PJ-722/723/762/763/773; the S8 kit is a PJ-723)
 
 Vendor driver 1.2.0-1 (Brother, September 2026), two packages per model,
@@ -98,7 +152,8 @@ To use a newer archive from phomemo.com (zip, tar or .pet), set
 `flattoo.stencil.phomemo.driverArchive = ../../vendor/<file>;` — the install
 phase is layout-agnostic (any x86_64 `rasterto*` plus any PPDs).
 
-Only USB is wired up; the Linux filters do not speak Bluetooth.
+Bluetooth: see above. BLE-only units (M02X class) are not covered; they need
+GATT, not serial.
 
 ## Office printers and scanners
 

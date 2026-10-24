@@ -15,6 +15,16 @@ set -euo pipefail
 QUEUE="${FLATTOO_QUEUE:-Stencil}"
 DENSITY="${FLATTOO_DENSITY:-6}"
 
+# --uri URI --model NAME: explicit target (from stencil-bt-setup).
+FORCE_URI=""; FORCE_MODEL=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --uri) FORCE_URI="$2"; shift 2 ;;
+    --model) FORCE_MODEL="$2"; shift 2 ;;
+    *) echo "usage: stencil-queue-setup [--uri URI --model NAME]" >&2; exit 2 ;;
+  esac
+done
+
 log() { echo "stencil-queue-setup: $*"; }
 
 # Wait for cupsd.
@@ -47,8 +57,26 @@ ppd_for_prefix() {
 
 uri=""; ppd=""; kind=""
 
+# ppd_for_model <name>: Brother PJ by model number, else Phomemo by prefix.
+ppd_for_model() {
+  local n="$1" short
+  if printf '%s' "$n" | grep -qiE 'PJ-?[67][0-9]{2}'; then
+    short="$(printf '%s' "$n" | grep -oiE 'PJ-?[67][0-9]{2}' | head -n1 | tr -d '-' | tr '[:upper:]' '[:lower:]')"
+    printf '%s\n' "$models_list" | awk -v s="$short" 'tolower($1) ~ ("brother_" s "_printer") {print $1; exit}'
+  else
+    ppd_for_prefix "$n"
+  fi
+}
+
+# 0. Explicit target from the Bluetooth wizard.
+if [ -n "$FORCE_URI" ]; then
+  uri="$FORCE_URI"; ppd="$(ppd_for_model "$FORCE_MODEL")"
+  case "$FORCE_MODEL" in *PJ-7*|*PJ7*|*pj7*) kind="brother" ;; *) kind="phomemo" ;; esac
+  [ -n "$ppd" ] || log "no vendor PPD matches '$FORCE_MODEL'; using a raw queue"
+fi
+
 # 1. USB devices CUPS can see.
-while read -r _ u _; do
+[ -n "$uri" ] || while read -r _ u _; do
   case "$u" in
     usb://Brother/PJ-7*)
       model="$(printf '%s' "$u" | sed -E 's#usb://Brother/(PJ-[0-9]+).*#\1#' | tr -d '-' | tr '[:upper:]' '[:lower:]')"  # pj723
@@ -78,6 +106,23 @@ if [ -z "$uri" ] || [ "$kind" = "brother-raw" ]; then
     uri="${ppd#driverless:}"
     kind="driverless"
   fi
+fi
+
+# 3. A paired Bluetooth stencil printer (set up once with stencil-bt-setup).
+if [ -z "$uri" ] && command -v bluetoothctl >/dev/null; then
+  while read -r _ mac name; do
+    case "$name" in
+      *M08*|*TP8[0-9]*|*T08*|*[Pp]homemo*|*QuYin*|*PJ-7*|*PJ7*)
+        cand="$(ppd_for_model "$name")"
+        chan=1
+        for f in /var/lib/flattoo/bt-"$(printf '%s' "$mac" | tr -d ':')".channel /home/*/.config/flattoo/bt-"$(printf '%s' "$mac" | tr -d ':')".channel; do
+          [ -r "$f" ] && chan="$(tr -dc '0-9' < "$f")" && break
+        done
+        uri="bluetooth://$mac/${chan:-1}"; ppd="$cand"
+        case "$name" in *PJ-7*|*PJ7*) kind="brother" ;; *) kind="phomemo" ;; esac
+        break ;;
+    esac
+  done < <(bluetoothctl devices Paired 2>/dev/null || true)
 fi
 
 if [ -z "$uri" ]; then

@@ -50,6 +50,8 @@ installs, writes the EFI entry, and prints "Done". `reboot`.
 * Passphrase prompt → auto-login as `artist` → XFCE.
 * Plug the stencil printer in. Wait ten seconds. Print the calibration page
   from the panel icon. If nothing appears, menu → **Fix Stencil Printer**.
+  No cable: menu → **Add Bluetooth Stencil Printer** with the printer in
+  pairing mode.
 * Phone: iPhone by cable ("Trust this computer" on the phone, then it is in
   the file manager sidebar), Android by cable, or LocalSend over Wi-Fi.
 * Tablet: plug it in. Display tablets map to their own screen on their own.

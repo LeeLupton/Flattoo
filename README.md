@@ -13,7 +13,8 @@ upgrade is atomic, and the previous system is always one boot-menu entry away.
 | Sketch on paper | Simple Scan, then right-click → **Clean Lines** turns the pencil scan into black stencil lines. |
 | Print a stencil | Right-click any image/PDF → **Print as Stencil**. Asks for width in inches, prints 1:1 on the `Stencil` queue. |
 | Trust the size | **Stencil Printer Calibration** on the panel prints a ruler page: measure the 4.00 in bar. |
-| Printer acting up | **Fix Stencil Printer** in the menu re-detects it and clears stuck state. No password. |
+| No cable | **Add Bluetooth Stencil Printer** pairs a Phomemo/QuYin or Bluetooth PocketJet and makes it the Stencil queue; the vendor filter's status handshake is relayed over the link. |
+| Printer acting up | **Fix Stencil Printer** in the menu re-detects it (USB first, then paired Bluetooth) and clears stuck state. No password. |
 | Only a thermal copier | **Print as Stencil** offers the office printer and prints at true size on plain paper. |
 | Phone photos | HEIC/WebP/AVIF open everywhere. iPhone by cable (photo roll in the file manager after "Trust"), Android by cable (MTP), or LocalSend over the shop Wi-Fi, no cloud. |
 | Tablet | Wacom and most Huion/XP-Pen/Gaomon work on plug-in; display tablets are mapped to their own screen automatically. OpenTabletDriver is one option away for the rest. |
@@ -37,9 +38,11 @@ Desktop is XFCE on X11: tablet pressure and cursor behavior are solid there.
   more: the vendor's Linux filters and PPDs are built in (pinned archive,
   two mirrors agreed on the hash).
 
-Plug the printer in; the `Stencil` queue appears by itself with Letter,
-no scaling, and the right driver options. Details and what was verified
-without hardware: [docs/printers.md](docs/printers.md).
+Plug the printer in (or pair it over Bluetooth from the menu); the `Stencil`
+queue appears with Letter, no scaling, and the right driver options. The
+Phomemo path is exercised end to end on every build against a fake printer
+speaking the status protocol decoded from the vendor filter. Details and
+what still needs hardware: [docs/printers.md](docs/printers.md).
 
 Stencil paper flips the image twice (carbon onto the top sheet, top sheet
 onto skin), so designs print **without** mirroring by default. The
@@ -56,8 +59,9 @@ modules/                     base, desktop, art, printing, stencil, media,
 pkgs/brother-pj/             PocketJet 7 LPR + CUPS wrapper derivations (5 models)
 pkgs/phomemo-cups/           Phomemo/QuYin vendor filters + 75 PPDs
 pkgs/stencil-tools/          stencil-print, stencil-clean-lines, stencil-calibrate,
-                             stencil-queue-setup, stencil-fix-printer,
-                             flattoo-session, flattoo-tablet-map (+ tests)
+                             stencil-queue-setup, stencil-fix-printer, stencil-bt-setup,
+                             bluetooth:// CUPS backend, flattoo-session,
+                             flattoo-tablet-map (+ tests)
 files/                       XFCE panel/screensaver/power defaults, Thunar actions
 docs/                        install, printers, maintenance
 .github/workflows/           weekly lock bump + eval gate; per-push checks

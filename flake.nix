@@ -80,6 +80,7 @@
 
       checks.${system} = {
         stencil-tools = pkgs.stencil-tools.tests.roundtrip;
+        phomemo-chain = pkgs.stencil-tools.tests.phomemoChain;
         brother-pj = self.packages.${system}.brother-pj;
         phomemo-cups = pkgs.phomemo-cups;
         shop-laptop-eval = self.nixosConfigurations.shop-laptop.config.system.build.toplevel;

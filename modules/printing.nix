@@ -25,6 +25,7 @@ in
     browsing = false;
     browsed.enable = false;
     drivers = [
+      pkgs.stencil-tools # bluetooth:// backend
       pkgs.brlaser # Brother office lasers
       pkgs.gutenprint # older Canon/Epson/HP inkjets and lasers
       pkgs.epson-escpr # Epson inkjets
