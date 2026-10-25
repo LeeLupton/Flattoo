@@ -1,5 +1,11 @@
 # Flattoo
 
+[![Checks](https://github.com/LeeLupton/Flattoo/actions/workflows/check.yml/badge.svg?branch=main&event=push)](https://github.com/LeeLupton/Flattoo/actions/workflows/check.yml)
+[![Dependency updates](https://github.com/LeeLupton/Flattoo/actions/workflows/update-flake-lock.yml/badge.svg?branch=main)](https://github.com/LeeLupton/Flattoo/actions/workflows/update-flake-lock.yml)
+[![NixOS 26.05](https://img.shields.io/badge/NixOS-26.05-5277C3?logo=nixos&logoColor=white)](flake.nix)
+[![Platform: x86_64-linux](https://img.shields.io/badge/platform-x86__64--linux-333333?logo=linux&logoColor=white)](flake.nix)
+[![Desktop: XFCE / X11](https://img.shields.io/badge/desktop-XFCE%20%2F%20X11-2284F2?logo=xfce&logoColor=white)](modules/desktop.nix)
+
 NixOS for a tattoo studio laptop. Hand sketching first, a stencil printer that
 prints at true size, a browser, a scanner, phone transfer, and nothing else.
 This repository defines the system and builds a USB installer for an
