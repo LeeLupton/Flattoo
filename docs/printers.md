@@ -76,10 +76,16 @@ paper/busy gating. In USB mode it asks name, paper, busy, paper, then
 prints. Page data is ESC/POS raster (`1d 76 30`, 196 bytes = 1568 px wide
 at 203 dpi for Letter).
 
-`checks.phomemo-chain` runs the whole path offline every build: PDF →
+The explicit `checks.x86_64-linux.phomemo-chain` check runs the whole path
+against a simulated printer: PDF →
 `pdftoraster` (vendor PPD) → `rastertoM08F` → `bluetooth` backend → a fake
 printer that answers with the packets above. It asserts both processes exit
 0 and the printer received a 1568 px wide raster page.
+
+Run it from the repository root with
+`nix build .#checks.x86_64-linux.phomemo-chain --print-build-logs`, or as part
+of a full `nix flake check`. A normal package build and the current CI workflows
+do not run this check.
 
 What still needs the real printer: that its SPP channel accepts the stream
 (the phone apps use the same transport and command set) and the PIN, which

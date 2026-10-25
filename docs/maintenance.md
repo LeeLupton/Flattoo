@@ -2,44 +2,78 @@
 
 ## The update pipeline
 
-```
-nixpkgs 26.05 (security fixes)        you (edits, pushes)
-          │                                   │
-          ▼                                   ▼
-GitHub Actions, Mondays:  nix flake update → evaluate both hosts →
-build stencil-tools + run its test → build the Brother driver → push main
-          │
-          ▼
-laptop, 03:30 nightly (or after the next boot):
-nixos-rebuild boot --flake github:LeeLupton/Flattoo#shop-laptop --refresh
-          │
-          ▼
-next power-on runs the new generation; the old ones stay in the boot menu
-```
+1. The weekly GitHub workflow runs on Mondays at 09:17 UTC. It updates the
+   lock file, evaluates both hosts, runs the stencil round-trip test, and builds
+   the PJ-723 wrapper before pushing a changed lock file to `main`. Validated
+   configuration edits can also be committed and pushed to the update source.
+2. The laptop's timer is scheduled for 03:30 in its configured time zone
+   (`America/New_York` by default), plus up to 45 minutes of randomized delay.
+   A missed run is caught up after the next boot. The default update command is
+   `nixos-rebuild boot --flake github:LeeLupton/Flattoo#shop-laptop --refresh`.
+3. A successful build becomes the default for the following boot. It does not
+   activate in the running session, and the job never reboots the laptop.
 
 Properties:
 
 * Nothing is ever half-applied. A failed build leaves the running system
   untouched; the nightly timer tries again tomorrow.
-* The build runs at `Nice=15` / idle IO, so if the laptop was off at 03:30
-  and the timer fires mid-session, the artist does not notice.
-* Fourteen generations are kept in the boot menu; `nix-collect-garbage`
+* The build runs at `Nice=15` / idle IO with reduced CPU weight to give
+  interactive work priority when the timer fires during a session.
+* Up to fourteen generations are listed in the boot menu; `nix-collect-garbage`
   runs weekly and removes anything older than 21 days.
 * Only `cache.nixos.org` is trusted as a binary cache, with its key pinned.
 
 ## Day to day
 
+For administration on the installed laptop, log in as `lee` or use `su - lee`
+from a terminal and enter the admin password. The artist account has no sudo.
+Run repository checks from the root of your development checkout on x86_64
+Linux with Nix's `nix-command` and `flakes` features enabled.
+
 | Task | Command |
 |---|---|
-| Try a change locally before pushing | `nix flake check && nix build .#nixosConfigurations.shop-laptop.config.system.build.toplevel` |
-| Apply right now, in person | `sudo nixos-rebuild switch --flake /etc/nixos#shop-laptop` (after `git -C /etc/nixos pull`) |
+| Evaluate the flake without building checks | `nix flake check --no-build` |
+| Build and run all declared checks | `nix flake check --print-build-logs` |
+| Apply the local installation copy and its edits | `sudo nixos-rebuild switch --flake /etc/nixos#shop-laptop` |
 | Apply now from the GitHub copy | `sudo nixos-rebuild switch --flake github:LeeLupton/Flattoo#shop-laptop --refresh` |
-| See what the nightly job did | `journalctl -u nixos-upgrade -b -1` or `systemctl status nixos-upgrade.timer` |
-| Roll back permanently | `sudo nixos-rebuild switch --rollback` |
+| See the recent upgrade log | `sudo journalctl -u nixos-upgrade.service -n 100 --no-pager` |
+| Inspect the upgrade timer | `systemctl status nixos-upgrade.timer` |
+| Activate the previous system-profile generation | `sudo nixos-rebuild switch --rollback` |
 | Which printer queues exist | `lpstat -v` |
 | Recreate the Stencil queue | `sudo stencil-queue-setup` |
 | Print a stencil from the shell | `stencil-print --width 3.5 design.png` |
-| Reformat the Nix files | `nix fmt` |
+| Format all tracked Nix files (in a Git checkout) | `nix fmt -- $(git ls-files '*.nix')` |
+
+The installer leaves `/etc/nixos` as a source snapshot with generated hardware
+configuration and initial account password hashes. It is not a Git checkout;
+`git pull` does not update it. Nightly builds use the remote flake independently,
+so they do not pick up local-only edits or refresh this directory. Put persistent
+changes in the configured update repository, or change
+`flattoo.autoUpgrade.flake` to your fork or `null` for manual updates.
+
+Keep `hosts/shop-laptop/passwords.nix` local and out of Git. Preserve the
+generated hardware configuration when refreshing local source, and include
+required hardware settings in the repository used for remote updates.
+
+### Choosing checks
+
+The full `nix flake check` also builds the laptop system closure, printer
+packages, stencil round-trip test, and simulated Phomemo integration test.
+It does not build the installer ISO. For targeted checks, see the
+[README validation commands](../README.md#validate-a-repository-change).
+The current push/PR workflow evaluates the laptop, runs the stencil round-trip
+test, and checks Nix formatting. The weekly workflow adds installer evaluation
+and a PJ-723 wrapper build. Neither currently runs the Phomemo integration test.
+
+### Recovering from a bad generation
+
+If an upgrade does not boot, select a known-good earlier generation in the boot
+menu. `--rollback` selects the previous **system-profile** generation, which may
+differ from the last system you actually booted when nightly builds have staged
+several generations. Fix or revert the update source, or disable automatic
+upgrades in the applied configuration, before another run stages the unwanted
+configuration again. Rollback changes the system generation; it does not restore
+artwork or other personal files.
 
 ## Adding software
 
@@ -64,8 +98,9 @@ flattoo.remote.ssh.enable = true;
 flattoo.admin.sshKeys = [ "ssh-ed25519 AAAA… lee@desk" ];
 ```
 
-sshd then listens only on the Tailscale interface, key auth only, `lee`
-only. First time: `sudo tailscale up` on the laptop and approve it in the
+With both options enabled, the firewall permits SSH through `tailscale0`;
+SSH authentication uses keys and permits only the configured admin (`lee` by
+default). First time: `sudo tailscale up` on the laptop and approve it in the
 admin console.
 
 ## Moving to a new laptop
