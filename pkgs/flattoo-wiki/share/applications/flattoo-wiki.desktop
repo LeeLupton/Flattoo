@@ -5,5 +5,5 @@ Comment=Everything about this laptop in plain words, with pictures
 Icon=help-contents
 Exec=flattoo-wiki gui
 Terminal=false
-Categories=System;Documentation;
+Categories=System;Documentation;X-Flattoo;
 Keywords=help;how;wiki;manual;guide;learn;

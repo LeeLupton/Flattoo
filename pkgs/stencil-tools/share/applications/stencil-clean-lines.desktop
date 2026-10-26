@@ -5,6 +5,6 @@ Comment=Turn a scanned or photographed pencil sketch into clean black lines
 Exec=stencil-clean-lines --gui %f
 Icon=image-x-generic
 Terminal=false
-Categories=Graphics;
+Categories=Graphics;X-Flattoo;
 MimeType=image/png;image/jpeg;image/webp;image/heif;image/heic;image/avif;image/bmp;image/tiff;application/pdf;
 Keywords=stencil;sketch;scan;lines;threshold;

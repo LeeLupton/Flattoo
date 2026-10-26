@@ -5,5 +5,5 @@ Comment=Pick a whole-desktop look: colors, icons, panel, wallpaper, workspaces
 Icon=preferences-desktop-theme
 Exec=flattoo-look gui
 Terminal=false
-Categories=Settings;DesktopSettings;
+Categories=Settings;DesktopSettings;X-Flattoo;
 Keywords=flattoo;look;theme;layout;workspace;lock;

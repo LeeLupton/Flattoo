@@ -5,5 +5,5 @@ Comment=Your résumé, bio, certifications and the free places you are listed �
 Icon=contact-new
 Exec=flattoo-profile
 Terminal=false
-Categories=Office;
+Categories=Office;X-Flattoo;
 Keywords=resume;cv;bio;profile;skills;certification;exposure;reviews;

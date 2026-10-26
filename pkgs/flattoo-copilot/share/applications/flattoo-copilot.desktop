@@ -5,5 +5,5 @@ Comment=Say what you need: an app, an update, the printer, free space, the look
 Icon=help-faq
 Exec=flattoo-copilot
 Terminal=false
-Categories=System;Utility;
+Categories=System;Utility;X-Flattoo;
 Keywords=help;install;app;update;printer;copilot;assistant;

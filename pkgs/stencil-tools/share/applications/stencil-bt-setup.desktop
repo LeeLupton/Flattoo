@@ -5,5 +5,5 @@ Comment=Pair a Bluetooth stencil printer and make it the Stencil queue
 Exec=stencil-bt-setup
 Icon=bluetooth
 Terminal=false
-Categories=Graphics;Printing;Settings;
+Categories=Settings;HardwareSettings;Printing;
 Keywords=stencil;printer;bluetooth;pair;
