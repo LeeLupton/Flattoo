@@ -35,6 +35,11 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
+      # Turns Pages on with the "GitHub Actions" source if nobody has yet;
+      # without it the deploy step fails with a 404.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - run: nix build .#site --print-build-logs
       - run: cp -rL result site-out
       - uses: actions/upload-pages-artifact@v3
