@@ -93,6 +93,7 @@
         lan-scan = pkgs.stencil-tools.tests.lanScan;
         looks-presets = pkgs.flattoo-looks.tests.presets;
         looks-i3config = pkgs.flattoo-looks.tests.i3config;
+        looks-panel-load = pkgs.flattoo-looks.tests.panelLoad;
         copilot-matcher = pkgs.flattoo-copilot.tests.matcher;
         copilot-admin = pkgs.flattoo-copilot.tests.admin;
         wiki-content = pkgs.flattoo-wiki.tests.content;

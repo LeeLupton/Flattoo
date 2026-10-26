@@ -189,7 +189,8 @@ def panel_profile_tar(panel, out_path):
         if pn.get("background"):
             r, g, b, a = pn["background"]
             props[f"/panels/panel-{n}/background-style"] = "uint32 1"
-            props[f"/panels/panel-{n}/background-rgba"] = f"[{r}, {g}, {b}, {a}]"
+            # xfconf arrays are arrays of variants; a bare [0.9, ...] (ad) crashes xfconfd
+            props[f"/panels/panel-{n}/background-rgba"] = f"[<{r}>, <{g}>, <{b}>, <{a}>]"
         for i, (ptype, pprops) in zip(ids, plugins):
             props[f"/plugins/plugin-{i}"] = f"'{ptype}'"
             for k, (t, v) in pprops.items():
@@ -356,7 +357,12 @@ def apply_desktop_launchers(ids):
         desktop_id = LAUNCHERS.get(name, name if name.endswith(".desktop") else None)
         if not desktop_id:
             continue
-        src = find_desktop_file(desktop_id, stub=False)
+        src = None
+        override = os.path.join(USER_APPS, desktop_id)  # the familiar name, when the look uses them
+        if os.path.exists(override):
+            with open(override, "rb") as fh:
+                src = fh.read()
+        src = src or find_desktop_file(desktop_id, stub=False)
         if not src:
             continue
         text = src.decode(errors="replace").replace("[Desktop Entry]", "[Desktop Entry]\nX-Flattoo-Home=true", 1)

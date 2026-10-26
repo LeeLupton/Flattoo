@@ -29,6 +29,12 @@
   xrandr,
   xfdesktop,
   runCommand,
+  dbus,
+  xfce4-panel,
+  xfce4-pulseaudio-plugin,
+  xfce4-whiskermenu-plugin,
+  xfce4-power-manager,
+  xfce4-docklike-plugin,
 }:
 let
   py = python3.withPackages (
@@ -187,6 +193,75 @@ stdenv.mkDerivation (finalAttrs: {
           test -f $HOME/.config/xfce4/panel/launcher-3/krita.desktop
           test -f $HOME/.config/flattoo/layouts/mine.json
           echo "ok: presets, layouts, export/restore"
+          touch $out
+        '';
+
+    # Every preset's panel profile must load into a real xfce4-panel: xfconfd
+    # + panel under Xvfb, xfce4-panel-profiles load, then the panels and
+    # plugin ids the preset declares must exist and no "plugin could not be
+    # loaded" dialog may be up. (A bare [0.9, ...] array once crashed xfconfd.)
+    panelLoad =
+      runCommand "flattoo-looks-panel-load"
+        {
+          nativeBuildInputs = [
+            finalAttrs.finalPackage
+            xvfb-run
+            dbus
+            xfconf
+            xfce4-panel
+            xfce4-panel-profiles
+            xdotool
+            py
+          ];
+          XDG_DATA_DIRS = lib.makeSearchPath "share" [
+            xfce4-panel
+            xfce4-pulseaudio-plugin
+            xfce4-whiskermenu-plugin
+            xfce4-power-manager
+            xfce4-docklike-plugin
+            finalAttrs.finalPackage
+          ];
+        }
+        ''
+          export HOME=$TMPDIR/home XDG_CONFIG_HOME=$TMPDIR/home/.config XDG_CACHE_HOME=$TMPDIR/home/.cache XDG_RUNTIME_DIR=$TMPDIR/run
+          mkdir -p $HOME/.config $XDG_RUNTIME_DIR; chmod 700 $XDG_RUNTIME_DIR
+          cd $TMPDIR
+          xvfb-run -a -s "-screen 0 1280x800x24" dbus-run-session --config-file=${dbus}/share/dbus-1/session.conf -- bash -e <<'SH'
+            ${xfconf}/lib/xfce4/xfconf/xfconfd &
+            sleep 2
+            xfce4-panel --disable-wm-check >$TMPDIR/panel.log 2>&1 &
+            sleep 5
+            for l in ${finalAttrs.finalPackage}/share/flattoo/looks/*.json; do
+              n=$(basename $l .json)
+              flattoo-look panel-tar $n $n.tar.bz2 >/dev/null
+              xfce4-panel-profiles load $n.tar.bz2
+              sleep 6
+              python3 - $l <<'PY'
+          import json, subprocess, sys
+          p = json.load(open(sys.argv[1]))
+          want = len(p["panels"]) if "panels" in p else 1
+          q = lambda prop: subprocess.run(["xfconf-query", "-c", "xfce4-panel", "-p", prop], capture_output=True, text=True).stdout
+          panels = [l for l in q("/panels").splitlines() if l.strip().isdigit()]
+          assert len(panels) == want, (p["name"], panels)
+          for n in panels:
+              ids = [l for l in q(f"/panels/panel-{n}/plugin-ids").splitlines() if l.strip().isdigit()]
+              assert ids, (p["name"], n)
+              assert q(f"/panels/panel-{n}/position").startswith("p="), (p["name"], n)
+          print(p["name"], len(panels), "panel(s) loaded,", sum(1 for _ in panels), "ok")
+          PY
+              # the loader restarts the panel; give the new process time, start one if it is gone
+              for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -f xfce4-panel >/dev/null && break; sleep 2; done
+              if ! pgrep -f xfce4-panel >/dev/null; then
+                echo "$n: the panel did not come back; starting one"
+                xfce4-panel --disable-wm-check >>$TMPDIR/panel.log 2>&1 &
+              fi
+              sleep 8
+              if xdotool search --name "could not be loaded" >/dev/null 2>&1; then
+                echo "$n: a plugin failed to load"; exit 1
+              fi
+            done
+            pkill -f xfce4-panel || true
+          SH
           touch $out
         '';
 

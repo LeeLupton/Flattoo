@@ -81,6 +81,7 @@ let
       users.users.artist.initialPassword = "artist";
       users.users.lee.initialPassword = "lee";
       users.users.root.hashedPassword = lib.mkForce null; # the test harness sets root's password itself
+      boot.blacklistedKernelModules = [ "floppy" ]; # no "Floppy Disk" icon on the desktop
       environment.etc."flattoo/sample-stencil.png".source = "${sample}/sample-stencil.png";
       environment.systemPackages = [
         pkgs.xdotool
@@ -112,7 +113,7 @@ let
         m = m or studio
         m.execute("pkill -f 'flattoo-(copilot|look|layout|lock|wiki|portfolio|profile|apps)'; pkill -f 'stencil-(print|fix-printer|bt-setup|net-setup|calibrate)'; true")
         m.sleep(1)
-        m.execute("pkill -x zenity; pkill -x rofi; true")
+        m.execute("pkill -f zenity; pkill -f rofi; true")
         artist("xdotool key Escape", m, check=False)
         m.sleep(1)
 
@@ -257,10 +258,10 @@ pkgs.testers.runNixOSTest {
     # Stencil tools
     bg("stencil-print --gui /etc/flattoo/sample-stencil.png")
     wait_window("Print stencil")
-    shot("print-stencil", "Print as Stencil (right-click any image): width on skin in inches, mirror, crisp lines or shading, copies.")
+    shot("print-stencil", "Print as Stencil with no stencil printer attached: it offers the other printers at true size instead. With the stencil printer on, it asks for width on skin, mirror, crisp lines or shading, copies.")
     close_dialogs()
     bg("stencil-fix-printer")
-    wait_window("Stencil printer")
+    wait_window("Stencil printer", timeout=480)
     shot("fix-printer", "Fix Stencil Printer: it looks over USB, Wi-Fi and Bluetooth and says what it found — here, with no printer attached, what you see when it finds nothing.")
     close_dialogs()
     bg("stencil-bt-setup")
@@ -276,11 +277,13 @@ pkgs.testers.runNixOSTest {
     studio.succeed("install -D -m644 /etc/flattoo/sample-stencil.png /home/artist/Pictures/rose-sketch.png; chown -R artist:users /home/artist/Pictures")
     bg("thunar /home/artist/Pictures")
     wait_window("Pictures")
-    artist("xdotool search --name Pictures windowactivate --sync key ctrl+a; sleep 2; xdotool key shift+F10", check=False)
+    # click into the icon view (not the location bar), select the file, open its menu
+    artist("xdotool search --name Pictures windowactivate --sync mousemove --window %1 420 420 click 1; sleep 1; xdotool key ctrl+a; sleep 2; xdotool key shift+F10", check=False)
     studio.sleep(6)
     shot("files-right-click", "Right-click an image in Files: Print as Stencil, Clean Lines, Open in Krita.")
-    studio.execute("pkill -x thunar; true")
-    studio.sleep(2)
+    artist("xdotool key Escape", check=False)
+    studio.execute("pkill -f thunar; true")
+    studio.sleep(3)
 
     # Layouts with the real apps
     bg("flattoo-layout apply reference-and-draw")
@@ -289,7 +292,7 @@ pkgs.testers.runNixOSTest {
     artist("flattoo-layout apply reference-and-draw", check=False)
     studio.sleep(10)
     shot("layout-reference-and-draw", "Reference + Draw: Krita on the left, the image viewer on the right for the reference.")
-    studio.execute("pkill -x krita; pkill -x ristretto; true")
+    studio.execute("pkill -f krita; pkill -f ristretto; true")
     studio.sleep(5)
     bg("flattoo-layout apply paperwork")
     studio.wait_until_succeeds("su artist -c 'DISPLAY=:0 xdotool search --class firefox'", timeout=900)
@@ -297,11 +300,11 @@ pkgs.testers.runNixOSTest {
     artist("flattoo-layout apply paperwork", check=False)
     studio.sleep(10)
     shot("layout-paperwork", "Paperwork: Firefox on the left, Files on the right.")
-    studio.execute("pkill -x firefox; pkill -x thunar; true")
+    studio.execute("pkill -f firefox; pkill -f thunar; true")
     studio.sleep(3)
 
     # Lock screen
-    artist("xflock4", check=False)
+    artist("pgrep -u $(id -u) -f xfce4-screensaver >/dev/null || (xfce4-screensaver >/dev/null 2>&1 &); sleep 8; xfce4-screensaver-command --lock", check=False)
     studio.sleep(15)
     artist("xset dpms force on; xset s reset; xdotool mousemove 300 300 mousemove 400 400", check=False)
     studio.sleep(5)
@@ -322,7 +325,7 @@ pkgs.testers.runNixOSTest {
     bg("rofi -show drun -show-icons", tiling)
     wait_window("rofi", tiling)
     shot("i3-rofi", "Super+D in the i3 session: type the first letters of an app.", tiling)
-    tiling.execute("pkill -x rofi; true")
+    tiling.execute("pkill -f rofi; true")
 
     with open(f"{os.environ['out']}/index.json", "w") as f:
         json.dump([{"file": k + ".png", "caption": v} for k, v in captions.items()], f, indent=2)
