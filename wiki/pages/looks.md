@@ -31,7 +31,7 @@ Open **Looks** from the menu, or ask Flattoo for "dark mode", "light mode", "big
 | **Classic Desktop** | Taskbar at the bottom, menu on the left, clock on the right, familiar names and icons. Feels like the last computer. |
 | **Gruvbox** | Warm retro colors, panel on the left edge to keep the canvas wide. |
 
-Every look keeps **Ask Flattoo** next to the menu and the same shortcuts.
+Every look keeps **Ask Flattoo** one tap away and the same shortcuts.
 
 ## Make it yours
 

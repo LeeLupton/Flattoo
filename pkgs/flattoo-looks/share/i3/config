@@ -41,7 +41,7 @@ for_window [window_role="pop-up|task_dialog|dialog"] floating enable
 
 # -- apps
 bindsym $mod+Return exec xfce4-terminal
-bindsym $mod+d exec --no-startup-id rofi -show drun -show-icons
+bindsym $mod+d exec --no-startup-id flattoo-apps
 bindsym $mod+k exec krita
 bindsym $mod+e exec thunar
 bindsym $mod+b exec firefox

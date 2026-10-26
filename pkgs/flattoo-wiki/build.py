@@ -150,8 +150,11 @@ def main():
             cap = captions.get(sid, sid.replace("-", " "))
             if sid in have:
                 src = os.path.join(a.screenshots, sid + ".png")
-                shutil.copy(src, os.path.join(a.out, "img", sid + ".png"))
-                thumb(src, os.path.join(a.out, "thumbs", sid + ".png"))
+                dst = os.path.join(a.out, "img", sid + ".png")
+                if not os.path.exists(dst):  # a screenshot may be used by several pages
+                    shutil.copyfile(src, dst)
+                    os.chmod(dst, 0o644)
+                    thumb(src, os.path.join(a.out, "thumbs", sid + ".png"))
                 figs.append(f'<figure><img src="img/{sid}.png" alt="{html.escape(cap)}" loading="lazy"><figcaption>{html.escape(cap)}</figcaption></figure>')
                 shots.append({"id": sid, "file": f"img/{sid}.png", "thumb": f"thumbs/{sid}.png", "caption": cap})
             else:

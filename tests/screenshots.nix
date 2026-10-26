@@ -306,8 +306,8 @@ pkgs.testers.runNixOSTest {
     # Lock screen
     artist("pgrep -u $(id -u) -f xfce4-screensaver >/dev/null || (xfce4-screensaver >/dev/null 2>&1 &); sleep 8; xfce4-screensaver-command --lock", check=False)
     studio.sleep(15)
-    artist("xset dpms force on; xset s reset; xdotool mousemove 300 300 mousemove 400 400", check=False)
-    studio.sleep(5)
+    artist("xset dpms force on; xset s reset; xdotool key shift; sleep 1; xdotool mousemove 300 300 mousemove 400 400 key shift", check=False)
+    studio.sleep(6)
     shot("lock-screen", "The lock screen after the lid closes or ten idle minutes: the password is the disk passphrase unless the installer was told otherwise.")
     studio.send_chars("artist\n")
     studio.sleep(3)
@@ -322,9 +322,9 @@ pkgs.testers.runNixOSTest {
         dump(tiling); raise
     tiling.sleep(40)
     shot("i3-desktop", "The i3 tiling session (pick it at the login screen): bar at the bottom, Super+D to launch, Super+Space for Ask Flattoo.", tiling)
-    bg("rofi -show drun -show-icons", tiling)
+    bg("flattoo-apps", tiling)
     wait_window("rofi", tiling)
-    shot("i3-rofi", "Super+D in the i3 session: type the first letters of an app.", tiling)
+    shot("i3-rofi", "Super+D in the i3 session: the same app grid, type the first letters of an app.", tiling)
     tiling.execute("pkill -f rofi; true")
 
     with open(f"{os.environ['out']}/index.json", "w") as f:
