@@ -19,6 +19,9 @@ nixos-rebuild boot --flake /etc/nixos#shop-laptop
 next power-on runs the new generation; the old ones stay in the boot menu
 ```
 
+With `flattoo.autoUpgrade.allowedSigners` set, `flattoo-sync` verifies the
+fetched tip's SSH signature and refuses anything else ([network.md](network.md)).
+
 Locked setup (`/etc/flattoo/locked`): `flattoo-sync` does nothing — the
 repo is frozen on the laptop — and `flattoo-nixpkgs-update` bumps only
 `nixpkgs` in `/etc/nixos/flake.lock` on Mondays, so security fixes still
@@ -42,6 +45,8 @@ Properties:
 | Apply right now, in person | `sudo flattoo-sync && sudo nixos-rebuild switch --flake /etc/nixos#shop-laptop` |
 | Apply now, as the artist | Ask Flattoo → *update now* |
 | What the artist installed | `cat /etc/nixos/hosts/shop-laptop/apps.nix`, `/var/log/flattoo-admin.log` |
+| DNS: which mode, is it validating | `cat /run/flattoo/dns-mode`, `unbound-host -D -v nixos.org`, `journalctl -t flattoo-dns` |
+| Edge firewall table | `sudo nft list table inet flattoo-edge` |
 | See what the nightly job did | `journalctl -u nixos-upgrade -b -1` or `systemctl status nixos-upgrade.timer` |
 | Roll back permanently | `sudo nixos-rebuild switch --rollback` |
 | Which printer queues exist | `lpstat -v` |

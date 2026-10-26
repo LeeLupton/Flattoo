@@ -55,9 +55,23 @@ jobs:
 
       - name: Commit and push
         if: env.no_change != '1'
+        env:
+          # Optional. An SSH private key whose public half is listed in
+          # flattoo.autoUpgrade.allowedSigners (principal "flattoo-ci"). With
+          # it, the laptop accepts the weekly bump even in signed-only mode.
+          SIGNING_KEY: ${{ secrets.FLATTOO_CI_SIGNING_KEY }}
         run: |
           git config user.name "flattoo-bot"
           git config user.email "flattoo-bot@users.noreply.github.com"
+          if [ -n "$SIGNING_KEY" ]; then
+            umask 077
+            printf '%s\n' "$SIGNING_KEY" > "$RUNNER_TEMP/signing_key"
+            ssh-keygen -y -f "$RUNNER_TEMP/signing_key" > "$RUNNER_TEMP/signing_key.pub"
+            git config gpg.format ssh
+            git config user.signingkey "$RUNNER_TEMP/signing_key.pub"
+            git config commit.gpgsign true
+            # the private key must sit next to the .pub for ssh-keygen -Y sign
+          fi
           git add flake.lock
           git commit -m "flake.lock: weekly update $(date -u +%F)"
           git push origin HEAD:main

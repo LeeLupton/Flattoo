@@ -37,6 +37,7 @@ let
     name = "flattoo-sync";
     runtimeInputs = with pkgs; [
       git
+      openssh # ssh-keygen, for commit signature checks
       rsync
       coreutils
     ];
@@ -56,11 +57,24 @@ let
       if [ -d "$MIRROR/.git" ]; then
         git -C "$MIRROR" remote set-url origin "$url"
         git -C "$MIRROR" fetch -q --depth 1 origin "$ref"
-        git -C "$MIRROR" reset -q --hard FETCH_HEAD
       else
         rm -rf "$MIRROR"
-        git clone -q --depth 1 --branch "$ref" "$url" "$MIRROR"
+        git clone -q --depth 1 --branch "$ref" --no-checkout "$url" "$MIRROR"
+        git -C "$MIRROR" fetch -q --depth 1 origin "$ref"
       fi
+      tip=$(git -C "$MIRROR" rev-parse --short FETCH_HEAD)
+      # A hijacked route to GitHub (or GitHub itself) cannot push config onto
+      # this machine when the tip must carry a signature from an allowed key.
+      if [ -s "$ETC/allowed_signers" ]; then
+        if ! git -C "$MIRROR" -c gpg.format=ssh -c gpg.ssh.program=${pkgs.openssh}/bin/ssh-keygen \
+              -c gpg.ssh.allowedSignersFile="$ETC/allowed_signers" \
+              verify-commit FETCH_HEAD >/dev/null 2>&1; then
+          echo "flattoo-sync: REFUSED $tip from $url ($ref): commit is not signed by a key in $ETC/allowed_signers; keeping the local copy"
+          exit 1
+        fi
+        echo "flattoo-sync: $tip signature ok"
+      fi
+      git -C "$MIRROR" reset -q --hard FETCH_HEAD
       rsync -a --delete \
         --exclude=/.git \
         --exclude='/hosts/*/hardware-configuration.nix' \
@@ -85,6 +99,9 @@ in
     environment.systemPackages = [ sync ];
     environment.etc."flattoo/upstream" = lib.mkIf isGithub {
       text = "${ghUrl} ${ghRef}\n";
+    };
+    environment.etc."flattoo/allowed_signers" = lib.mkIf (cfg.allowedSigners != [ ]) {
+      text = lib.concatMapStrings (k: k + "\n") cfg.allowedSigners;
     };
 
     system.autoUpgrade = {

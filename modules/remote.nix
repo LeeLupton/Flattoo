@@ -17,6 +17,15 @@ in
         openFirewall = true;
         useRoutingFeatures = "client";
       };
+      # MagicDNS through the local validating resolver (modules/network.nix
+      # keeps NetworkManager and Tailscale out of resolv.conf).
+      services.unbound.settings.forward-zone = lib.mkIf cfg.network.dns.enable [
+        {
+          name = "ts.net.";
+          forward-addr = [ "100.100.100.100" ];
+        }
+      ];
+      services.tailscale.extraUpFlags = [ "--accept-dns=false" ];
       # Only Tailscale may reach sshd when both are on.
       services.openssh.openFirewall = lib.mkIf cfg.remote.ssh.enable false;
       networking.firewall.interfaces."tailscale0".allowedTCPPorts = lib.mkIf cfg.remote.ssh.enable [ 22 ];

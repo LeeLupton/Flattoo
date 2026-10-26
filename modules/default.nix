@@ -15,6 +15,7 @@ in
     ./media.nix
     ./laptop.nix
     ./security.nix
+    ./network.nix
     ./remote.nix
     ./extras.nix
     ./looks.nix
@@ -166,6 +167,23 @@ in
           Flake the laptop pulls every night. The new system becomes the boot
           default and takes effect at the next power-on; the running session is
           never touched. null disables nightly upgrades.
+        '';
+      };
+      allowedSigners = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        example = [
+          "lee@lupton.dev ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI..."
+          "flattoo-ci ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI..."
+        ];
+        description = ''
+          SSH public keys, in OpenSSH allowed_signers format, that may sign
+          commits on the upstream branch. When set, the nightly sync refuses
+          a fetched tip that is not signed by one of them (git verify-commit),
+          so neither a hijacked route to GitHub nor a compromised GitHub
+          account can push configuration onto the laptop. Every commit that
+          lands on the branch, including the weekly lock bump from CI, must
+          then be signed.
         '';
       };
       time = mkOption {

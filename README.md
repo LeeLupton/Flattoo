@@ -27,6 +27,7 @@ upgrade is atomic, and the previous system is always one boot-menu entry away.
 | Browser | Firefox with uBlock Origin, telemetry and sponsored tiles off. |
 | One thing to remember | The disk passphrase doubles as the screen-unlock password unless the installer is told otherwise. |
 | Not thinking about it | Lid = sleep, lock on wake, disk encrypted, nightly upgrades that never touch the running session. |
+| Someone else's network | Redirects, rogue router advertisements, source routes and ARP/ND takeovers are ignored and dropped; the laptop never forwards or routes to bogons. A local validating resolver speaks DNS-over-TLS to Quad9, validates DNSSEC itself, answers private reverse zones locally, and steps down only behind a captive portal. Firefox is HTTPS-only. Repo syncs can require signed commits. [docs/network.md](docs/network.md). |
 
 Desktop is XFCE on X11: tablet pressure and cursor behavior are solid there.
 
@@ -59,8 +60,8 @@ flake.nix                    inputs: nixpkgs 26.05 (release tarball), disko
 hosts/shop-laptop/           the studio laptop: flattoo.* settings, disk layout
 hosts/installer/             installer ISO + the flattoo-install wizard
 modules/                     base, desktop, art, printing, stencil, media, laptop,
-                             security, remote, extras, autoupgrade (+ flattoo-sync),
-                             looks, locked, copilot
+                             security, network (edge hardening, Unbound), remote,
+                             extras, autoupgrade (+ flattoo-sync), looks, locked, copilot
 pkgs/brother-pj/             PocketJet 7 LPR + CUPS wrapper derivations (5 models)
 pkgs/phomemo-cups/           Phomemo/QuYin vendor filters + 75 PPDs
 pkgs/stencil-tools/          stencil-print, stencil-clean-lines, stencil-calibrate,
@@ -72,7 +73,7 @@ pkgs/flattoo-looks/          flattoo-look, flattoo-layout, i3 config, wallpapers
 pkgs/flattoo-copilot/        flattoo-copilot, flattoo-admin, catalog.json (+ tests)
 tests/look-bundle/           sample captured look for checks.locked-eval
 files/                       XFCE panel/screensaver/power defaults, Thunar actions
-docs/                        install, printers, maintenance, looks, copilot
+docs/                        install, printers, maintenance, looks, copilot, network
 .github/workflows/           weekly lock bump + eval gate; per-push checks
 ```
 
@@ -116,6 +117,7 @@ and `modules/copilot.nix`: user and admin names, auto-login, lock on
 suspend, OpenTabletDriver, stencil density, Brother/Phomemo drivers, default
 look, i3 session, AI extras (Upscayl, Real-ESRGAN, rembg — off by default,
 nothing in the base image), copilot LLM provider (`none` / `anthropic` /
-`ollama`; understanding only, never execution), Tailscale, SSH, upgrade
-time, latest kernel. Written on the machine, not in git: `apps.nix` (Ask
+`ollama`; understanding only, never execution), DNS upstreams and portal
+fallback, signed-only repo syncs (`autoUpgrade.allowedSigners`), Tailscale,
+SSH, upgrade time, latest kernel. Written on the machine, not in git: `apps.nix` (Ask
 Flattoo) and `look.nix` + `look/` (Lock This Setup).
