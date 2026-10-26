@@ -31,7 +31,7 @@ import time
 PRESETS_DIR = "@presets@"
 HOME = os.path.expanduser("~")
 USER_DIR = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".config")), "flattoo", "layouts")
-WAIT = 25
+WAIT = float(os.environ.get("FLATTOO_LAYOUT_WAIT", "25"))  # seconds to wait for an app window
 
 
 def run(cmd, **kw):

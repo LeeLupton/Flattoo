@@ -11,6 +11,7 @@ upgrade is atomic, and the previous system is always one boot-menu entry away.
 |---|---|
 | Draw | Krita (primary), MyPaint, AzPainter, Rnote, Inkscape for lettering, Xournal++ for tracing. GIMP (with G'MIC) installed, not on the panel. ~40 more a sentence away in Ask Flattoo. |
 | Never a terminal | **Ask Flattoo** (button next to the menu, `Super+Space`): *"something like Microsoft Paint"*, *"update now"*, *"the printer isn't working"*, *"free up space"*. A fixed set of actions and a curated app catalog behind a plain-English front end; one polkit-guarded root helper; no shell. |
+| Learn it without Lee | **Help & How-To**: 23 plain-English pages with screenshots of this very desktop (looks, layouts, scanning, printing, phone photos, updates, the lock, safety). Ask Flattoo *"how do I scan a sketch"* opens the right page. Screenshots are generated in a VM from the real configuration. [docs/wiki.md](docs/wiki.md). |
 | Make it theirs | **Looks**: six whole-desktop presets (theme, icons, fonts, wallpaper, panel, workspaces, shortcuts), live. **Layouts**: open-and-place window sets. An i3 tiling session at the login screen. Save your own of each. |
 | Then freeze it | **Lock This Setup** bakes the current desktop into the NixOS config: restored at every login, settings kiosk-locked, boot menu hidden, add-ons frozen, GitHub no longer pulled — only weekly nixpkgs security bumps. **Unlock** needs the admin password. |
 | Sketch on paper | Simple Scan, then right-click → **Clean Lines** turns the pencil scan into black stencil lines. |
@@ -71,9 +72,13 @@ pkgs/stencil-tools/          stencil-print, stencil-clean-lines, stencil-calibra
 pkgs/flattoo-looks/          flattoo-look, flattoo-layout, i3 config, wallpapers,
                              flattoo-lock / flattoo-unlock (+ tests)
 pkgs/flattoo-copilot/        flattoo-copilot, flattoo-admin, catalog.json (+ tests)
+pkgs/flattoo-wiki/           Help & How-To: renders wiki/ to HTML + index.json (+ tests)
+wiki/pages/, wiki/screenshots/  the artist's help pages and their VM-made screenshots
+tests/screenshots.nix        the VM run that takes them (nix build .#screenshots)
+scripts/update-screenshots.sh
 tests/look-bundle/           sample captured look for checks.locked-eval
 files/                       XFCE panel/screensaver/power defaults, Thunar actions
-docs/                        install, printers, maintenance, looks, copilot, network
+docs/                        install, printers, maintenance, looks, copilot, network, wiki
 .github/workflows/           weekly lock bump + eval gate; per-push checks
 ```
 

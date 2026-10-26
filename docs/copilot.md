@@ -26,6 +26,7 @@ or the "Ask Flattoo" menu entry. Type what you want in plain words:
 | *dark mode* / *bigger text* / *theme* | Opens **Looks**. |
 | *side by side* / *layout* | Opens **Layouts**. |
 | *lock this setup* | Opens **Lock This Setup**. |
+| *how do I scan a sketch* / *what is the lock screen password* / *where did my file go* | Opens the matching page of **Help & How-To** ([docs/wiki.md](wiki.md)); several close pages → a list to pick from. |
 | *what can you do* | Lists all of the above. |
 
 Anything else gets "I don't know how to do that" and the list. Nothing is
@@ -40,7 +41,8 @@ actions with a natural-language front end:
   twenty-odd actions (`install`, `remove`, `open`, `panel`, `suggest`,
   `update`, `update-status`, `printer-*`, `print`, `disk`, `wifi`,
   `bluetooth`, `battery`, `power`, `display`, `look`, `layout`, `lock`,
-  `installed`, `help`).
+  `installed`, `learn`, `help`). `learn` opens a wiki page; its page id is
+  validated against the wiki index.
   There is no action that takes a command string. `rm -rf /` is answered
   with the help text.
 * **Catalog-only installs.** `pkgs/flattoo-copilot/share/flattoo/catalog.json`

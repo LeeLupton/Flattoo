@@ -48,7 +48,8 @@
     "<Super>k": "krita",
     "<Super>l": "flattoo-layout gui",
     "<Super>p": "stencil-print --gui",
-    "<Super>space": "flattoo-copilot"
+    "<Super>space": "flattoo-copilot",
+    "Super_L": "xfce4-popup-whiskermenu"
   },
   "name": "gruvbox"
 }

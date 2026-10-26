@@ -72,7 +72,7 @@ in
   # iPhone photos arrive as HEIC, Android as WebP/AVIF. Windows needs a paid
   # codec pack for the first one; here every image viewer just opens them.
   programs.gdk-pixbuf.modulePackages = with pkgs; [
-    libheif
+    libheif.lib # the loader is in the lib output; the default (bin) has none
     webp-pixbuf-loader
     libavif
   ];

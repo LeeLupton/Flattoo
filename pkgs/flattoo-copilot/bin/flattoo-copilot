@@ -57,6 +57,7 @@ ACTIONS = {
     "layout": "Open a window layout",
     "lock": "Lock the setup",
     "installed": "List what is installed",
+    "learn": "Open the help page about something (how do I…, what is…)",
     "help": "Explain what I can do",
 }
 
@@ -74,8 +75,14 @@ SYNONYMS = {
     "lock": ["lock the setup", "lock this", "make it permanent", "freeze", "lock down", "lock it"],
     "look": ["theme", "dark mode", "light mode", "look", "colors", "colours", "wallpaper", "panel", "bigger text", "text bigger", "larger text", "font size", "appearance", "icons", "cursor"],
     "installed": ["what is installed", "what do i have", "list apps", "installed apps", "what apps", "which apps"],
-    "help": ["help", "what can you do", "how do i"],
+    "help": ["help", "what can you do", "what do you do"],
 }
+
+# Phrasings that ask to be shown or told something: the wiki answers those.
+LEARN_WORDS = ["how do i", "how to", "how can i", "what is", "what does", "what are", "show me", "explain", "teach",
+               "where is", "where are", "where do i", "help with", "help me", "guide", "manual", "wiki", "tutorial",
+               "learn", "tell me about", "instructions", "walk me through", "why does", "why is", "can i ",
+               "is it ", "is this", "should i", "do i need", "is there a way"]
 
 # Anything about printing goes to one of the printer actions.
 PRINTER_WORDS = ("print", "stencil", "thermal")
@@ -172,6 +179,57 @@ def fit_note(entry, m):
     return "; ".join(notes)
 
 
+# ------------------------------------------------------------------ the wiki
+
+def wiki_dir():
+    for base in [os.environ.get("FLATTOO_WIKI", "")] + os.environ.get("XDG_DATA_DIRS", "").split(":") + ["/run/current-system/sw/share"]:
+        if not base:
+            continue
+        d = base if base.endswith("wiki") else os.path.join(base, "flattoo", "wiki")
+        if os.path.exists(os.path.join(d, "index.json")):
+            return d
+    return None
+
+
+def wiki_pages():
+    d = wiki_dir()
+    if not d:
+        return []
+    try:
+        with open(os.path.join(d, "index.json")) as f:
+            return json.load(f)["pages"]
+    except (OSError, ValueError, KeyError):
+        return []
+
+
+def wiki_search(text, n=4):
+    """Rank wiki pages for a request; the ranking lives in flattoo-wiki so there is one of it."""
+    if not shutil.which("flattoo-wiki") or not wiki_pages():
+        return []
+    r = run(["flattoo-wiki", "search", "--json", text])
+    try:
+        hits = json.loads(r.stdout or "[]")
+    except ValueError:
+        return []
+    byid = {p["id"]: p for p in wiki_pages()}
+    return [(h["score"], byid[h["id"]]) for h in hits[:n] if h["id"] in byid]
+
+
+def wiki_candidates(hits):
+    """One page when the best hit is clear, otherwise the top three to pick from."""
+    if len(hits) == 1 or hits[0][0] >= 3.0 or hits[0][0] >= 1.8 * hits[1][0]:
+        return [hits[0][1]["id"]]
+    return [p["id"] for _, p in hits[:3]]
+
+
+def wiki_open(page_id):
+    d = wiki_dir()
+    if not d:
+        return False
+    path = os.path.join(d, page_id + ".html")
+    return os.path.exists(path) and spawn(["xdg-open", "file://" + path])
+
+
 # ------------------------------------------------------------------ understanding
 
 def norm(s):
@@ -217,12 +275,15 @@ def classify(text, cat):
                 return action, {}, 0.8
         return "printer-fix", {}, 0.7
 
-    # 2. A catalog app named outright (name, pkg or a tag spelled out).
+    # 2. A catalog app named outright (name, pkg or a tag spelled out). A
+    #    question ("how do I scan a sketch") only counts here when it names
+    #    an app; otherwise the wiki answers it below.
+    asks = any(w in t for w in LEARN_WORDS)
     hits = match_catalog(text, cat)
     strong = [(s, e) for s, e in hits if s >= 1.0]
-    if strong:
+    named = bool(strong) and (strong[0][1]["name"].lower() in t or strong[0][1]["pkg"].lower().split(".")[-1] in t)
+    if strong and not (asks and not named):
         top = strong[0][1]
-        named = top["name"].lower() in t or top["pkg"].lower().split(".")[-1] in t
         if verbs_remove:
             return "remove", {"pkg": top["pkg"]}, 0.8
         if verbs_panel and is_installed(top):
@@ -233,14 +294,28 @@ def classify(text, cat):
             return ("open" if is_installed(top) else "install"), {"pkg": top["pkg"]}, 0.8
         return "suggest", {"query": text, "candidates": [e["pkg"] for _, e in hits[:5]]}, 0.7
 
-    # 3. System chores.
+    # 3. "How do I…" — the wiki, when it has a page that fits. Status questions
+    #    ("is it up to date") are answered live, not from a page.
+    if any(p in t for p in SYNONYMS["update-status"]):
+        return "update-status", {}, 0.8
+    explicit_install = any(v in t for v in ["install", "download", "add ", "get me", "i want", "i need"])
+    if asks and not (explicit_install or verbs_remove):
+        hits = wiki_search(text)
+        if hits and hits[0][0] >= 1.0:
+            return "learn", {"page": hits[0][1]["id"], "candidates": wiki_candidates(hits)}, 0.8
+
+    # 4. System chores.
     for action, syns in SYNONYMS.items():
         if any(s in t for s in syns):
             return action, {}, 0.8
 
-    # 4. A vague app wish ("something for photos").
+    # 5. A vague app wish ("something for photos").
     if hits:
         return "suggest", {"query": text, "candidates": [e["pkg"] for _, e in hits[:5]]}, 0.6
+    # 6. Anything the wiki knows about.
+    whits = wiki_search(text)
+    if whits and whits[0][0] >= 1.0:
+        return "learn", {"page": whits[0][1]["id"], "candidates": wiki_candidates(whits)}, 0.5
     return "help", {"unknown": text}, 0.3
 
 
@@ -251,6 +326,8 @@ Actions: {actions}
 Catalog packages (pkg: name — tags): {catalog}
 Reply with JSON only: {{"action": "<action>", "args": {{...}}, "say": "<one or two friendly sentences in plain English, no jargon>"}}
 For install/remove/open/panel the only argument is "pkg" and it MUST be one of the catalog pkg values. For suggest, args = {{"candidates": [pkg,...]}} with up to 4 pkgs ranked for the need, preferring installed ones and apps that fit the hardware: {machine}. Already installed: {installed}.
+Help pages (id: title — summary): {wiki}
+When the person asks how something works, where something is, or what something means, use "learn" with args = {{"page": "<id>"}} from that list and answer briefly in "say" using the page summary.
 If the request is not covered by the actions, use "help" and explain in "say" what you can do instead."""
 
 
@@ -259,7 +336,8 @@ def llm_choose(text, cat, provider, machine_info, installed):
         actions="; ".join(f"{k}: {v}" for k, v in ACTIONS.items()),
         catalog="; ".join(f"{e['pkg']}: {e['name']} — {', '.join(e['tags'][:5])}" for e in cat),
         machine=f"RAM {machine_info['ram_gb']} GB, dedicated GPU: {machine_info['dedicated_gpu']}, free disk {machine_info['free_gb']} GB",
-        installed=", ".join(installed))
+        installed=", ".join(installed),
+        wiki="; ".join(f"{p['id']}: {p['title']} — {p['summary']}" for p in wiki_pages()))
     try:
         if provider == "anthropic":
             key = open(os.environ.get("FLATTOO_COPILOT_KEYFILE", "/etc/flattoo/copilot.key")).read().strip()
@@ -293,6 +371,11 @@ def llm_choose(text, cat, provider, machine_info, installed):
         args = {"pkg": args["pkg"]}
     elif d["action"] == "suggest":
         args = {"candidates": [p for p in (args.get("candidates") or []) if p in pkgs][:4], "query": text}
+    elif d["action"] == "learn":
+        ids = {p["id"] for p in wiki_pages()}
+        if args.get("page") not in ids:
+            return None
+        args = {"page": args["page"], "candidates": [args["page"]]}
     else:
         args = {}
     say = str(d.get("say", ""))[:400]
@@ -449,9 +532,30 @@ def do_installed(cat):
     return ("Base apps: " + ", ".join(base) + "." + (f"\n\nAdded: {', '.join(extra)}." if extra else "\n\nNothing added yet.")), None
 
 
+def do_learn(page, candidates, ui):
+    pages = {p["id"]: p for p in wiki_pages()}
+    if page not in pages:
+        return do_help()
+    if ui.gui and len(candidates) > 1:
+        rows = []
+        for pid in candidates:
+            if pid in pages:
+                rows += [pid, pages[pid]["title"], pages[pid]["summary"][:100]]
+        pick = ui.pick("Which page?", rows, "") or None
+        if pick is None:
+            return "Okay.", None
+        page = pick
+    if wiki_open(page):
+        return f"Opening “{pages[page]['title']}”.\n\n{pages[page]['summary']}", None
+    return pages[page]["summary"], None
+
+
 def do_help(unknown=None):
     lead = f"I don't know how to do \"{unknown}\".\n\n" if unknown else ""
-    return lead + "I can:\n" + "\n".join(f"• {v}" for v in ACTIONS.values()) + "\n\nFor anything else, ask Lee.", None
+    tail = "\n\nFor anything else, ask Lee."
+    if wiki_dir():
+        tail = "\n\nAsk me “how do I…” for the help pages, or open Help & How-To from the menu. For anything else, ask Lee."
+    return lead + "I can:\n" + "\n".join(f"• {v}" for v in ACTIONS.values()) + tail, None
 
 
 # ------------------------------------------------------------------ UI
@@ -540,6 +644,8 @@ def handle(text, ui, provider="none"):
         msg, follow = do_disk(ui)
     elif action == "installed":
         msg, follow = do_installed(cat)
+    elif action == "learn":
+        msg, follow = do_learn(args.get("page"), args.get("candidates") or [args.get("page")], ui)
     elif action == "help":
         msg, follow = do_help(args.get("unknown"))
     else:
@@ -557,7 +663,11 @@ def main(argv=None):
     ap.add_argument("--dry-run", action="store_true", help="print the chosen action, change nothing")
     ap.add_argument("--provider", default=os.environ.get("FLATTOO_COPILOT_PROVIDER", "none"), choices=["none", "anthropic", "ollama"])
     ap.add_argument("--no-gui", action="store_true")
+    ap.add_argument("--list-actions", action="store_true", help="print the action allowlist as JSON")
     args = ap.parse_args(argv)
+    if args.list_actions:
+        print(json.dumps(list(ACTIONS)))
+        return 0
     ui = UI(have_gui() and not args.no_gui and not args.dry_run, dry_run=args.dry_run)
     text = " ".join(args.request).strip() or ui.ask()
     if not text:

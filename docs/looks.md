@@ -20,7 +20,7 @@ keyboard shortcuts, live, through xfconf — no logout.
 | **Gruvbox** | Warm retro palette, panel on the left edge to keep the canvas wide. |
 
 Every preset carries the **Ask Flattoo** button next to the menu and
-`Super+Space` for it; `Super+P` prints a stencil, `Super+L` opens layouts.
+`Super+Space` for it; `Super` alone opens the menu, `Super+P` prints a stencil, `Super+L` opens layouts.
 
 **Save current look** turns whatever the artist has tweaked by hand
 (Appearance, Window Manager, Panel settings, `lxappearance`) into a new

@@ -47,4 +47,9 @@ in
   flattoo-copilot = prev.callPackage ./flattoo-copilot {
     inherit (final) flattoo-looks stencil-tools;
   };
+
+  # Help & How-To: wiki/pages + wiki/screenshots rendered, indexed for the copilot
+  flattoo-wiki = prev.callPackage ./flattoo-wiki {
+    inherit (final) flattoo-copilot;
+  };
 }

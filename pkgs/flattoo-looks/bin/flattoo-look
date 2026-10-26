@@ -41,6 +41,7 @@ CHANNELS = ["xsettings", "xfwm4", "xfce4-panel", "xfce4-desktop", "xfce4-keyboar
 LAUNCHERS = {
     "menu": None,
     "copilot": "flattoo-copilot.desktop",
+    "wiki": "flattoo-wiki.desktop",
     "krita": "org.kde.krita.desktop",
     "mypaint": "mypaint.desktop",
     "inkscape": "org.inkscape.Inkscape.desktop",

@@ -89,7 +89,10 @@ in
     }
 
     (lib.mkIf cfg.copilot.enable {
-      environment.systemPackages = [ pkgs.flattoo-copilot ];
+      environment.systemPackages = [
+        pkgs.flattoo-copilot
+        pkgs.flattoo-wiki # Help & How-To; "how do I…" in Ask Flattoo opens its pages
+      ];
 
       # The artist may run flattoo-admin's four subcommands without a
       # password; anyone else needs the administrator's.
