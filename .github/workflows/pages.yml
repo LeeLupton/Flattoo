@@ -35,11 +35,14 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
-      # Turns Pages on with the "GitHub Actions" source if nobody has yet;
-      # without it the deploy step fails with a 404.
+      # Pages has to be switched on once, by a repo admin, with the
+      # "GitHub Actions" source (Settings → Pages → Build and deployment →
+      # Source, or: gh api -X POST repos/OWNER/REPO/pages -f build_type=workflow).
+      # The workflow token is not allowed to do that itself (configure-pages'
+      # `enablement: true` fails with "Resource not accessible by integration"),
+      # so until then this step stops the run here with a clear message
+      # instead of the deploy step 404ing.
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
       - run: nix build .#site --print-build-logs
       - run: cp -rL result site-out
       - uses: actions/upload-pages-artifact@v3
