@@ -8,7 +8,13 @@ decoded from the filter binary (see docs/printers.md). File descriptors are
 wired the way cupsd wires them: filter stdout -> backend stdin, backend fd 3
 -> filter fd 3 (back channel), fd 4 shared socketpair (side channel).
 
-usage: phomemo_chain.py PDFTORASTER FILTER PPD BACKEND PAGE.pdf
+usage: phomemo_chain.py PDFTORASTER FILTER PPD BACKEND PAGE.pdf [bluetooth|socket]
+
+  bluetooth  (default) BACKEND is Flattoo's bluetooth backend; the fake
+             printer is a Unix socket reached via FLATTOO_BT_FAKE_SOCKET.
+  socket     BACKEND is CUPS' own socket backend; the fake printer listens on
+             TCP 127.0.0.1 and DEVICE_URI is socket://127.0.0.1:PORT (the LAN
+             path for Phomemo Wi-Fi units and networked PocketJets).
 """
 
 import os
@@ -31,16 +37,28 @@ REPLIES = {
 
 
 class FakePrinter(threading.Thread):
-    def __init__(self, path):
+    def __init__(self, path=None, tcp=False):
         super().__init__(daemon=True)
-        self.path = path
         self.received = bytearray()
         self.queries = []
-        self.srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.srv.bind(path)
+        self.error = None
+        self.in_page = False
+        if tcp:
+            self.srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.srv.bind(("127.0.0.1", 0))
+            self.port = self.srv.getsockname()[1]
+        else:
+            self.srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.srv.bind(path)
         self.srv.listen(1)
 
     def run(self):
+        try:
+            self.serve()
+        except Exception as e:  # noqa: BLE001
+            self.error = e
+
+    def serve(self):
         conn, _ = self.srv.accept()
         conn.settimeout(0.2)
         pending = b""
@@ -55,8 +73,9 @@ class FakePrinter(threading.Thread):
                 break
             self.received += data
             pending += data
-            # answer every 1f 11 xx query embedded in the stream
-            while True:
+            # Answer 1f 11 xx queries. Only before page data starts: the same
+            # byte pair occurs inside raster data and must not be "answered".
+            while not self.in_page:
                 i = pending.find(b"\x1f\x11")
                 if i < 0 or i + 3 > len(pending):
                     pending = pending[-2:] if i < 0 else pending[i:]
@@ -70,18 +89,27 @@ class FakePrinter(threading.Thread):
                         conn.sendall(reply)
                     except OSError:
                         pass
+            if b"\x1dv0" in self.received:
+                self.in_page = True
         conn.close()
 
 
 def main():
     pdftoraster, filt, ppd, backend, pdf = sys.argv[1:6]
+    mode = sys.argv[6] if len(sys.argv) > 6 else "bluetooth"
     with tempfile.TemporaryDirectory() as td:
-        sockpath = os.path.join(td, "printer.sock")
-        printer = FakePrinter(sockpath)
+        if mode == "socket":
+            printer = FakePrinter(tcp=True)
+            uri = f"socket://127.0.0.1:{printer.port}"
+            extra = {}
+        else:
+            sockpath = os.path.join(td, "printer.sock")
+            printer = FakePrinter(sockpath)
+            uri = "bluetooth://AA:BB:CC:DD:EE:FF/1"
+            extra = {"FLATTOO_BT_FAKE_SOCKET": sockpath}
         printer.start()
 
-        env = dict(os.environ, PPD=ppd, DEVICE_URI="bluetooth://AA:BB:CC:DD:EE:FF/1",
-                   FLATTOO_BT_FAKE_SOCKET=sockpath, TMPDIR=td)
+        env = dict(os.environ, PPD=ppd, DEVICE_URI=uri, TMPDIR=td, **extra)
 
         raster = os.path.join(td, "page.ras")
         with open(raster, "wb") as out:
@@ -99,28 +127,35 @@ def main():
             op = ">" if fd3_write else "<"
             return ["sh", "-c", f'exec 3{op}&{fd3} 4<&{fd4}; exec "$@"', "_", *cmd]
 
+        # stderr goes to files: CUPS' socket backend logs a DEBUG line per
+        # 256-byte chunk, which would fill a pipe and deadlock the chain.
+        ferr_f = open(os.path.join(td, "filter.err"), "w+b")
+        berr_f = open(os.path.join(td, "backend.err"), "w+b")
         filt_p = subprocess.Popen(with_fds([filt, "1", "artist", "test", "1", "PageSize=Letter"], bc_r, sc_f.fileno(), False),
-                                  stdin=open(raster, "rb"), stdout=f_out_w, stderr=subprocess.PIPE,
+                                  stdin=open(raster, "rb"), stdout=f_out_w, stderr=ferr_f,
                                   env=env, pass_fds=(bc_r, sc_f.fileno()))
         back_p = subprocess.Popen(with_fds([backend, "1", "artist", "test", "1", "PageSize=Letter"], bc_w, sc_b.fileno(), True),
-                                  stdin=f_out_r, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                  stdin=f_out_r, stdout=subprocess.DEVNULL, stderr=berr_f,
                                   env=env, pass_fds=(bc_w, sc_b.fileno()))
         os.close(f_out_r); os.close(f_out_w); os.close(bc_r); os.close(bc_w); sc_f.close(); sc_b.close()
 
         t0 = time.time()
-        while time.time() - t0 < 120 and (filt_p.poll() is None or back_p.poll() is None):
+        while time.time() - t0 < 180 and (filt_p.poll() is None or back_p.poll() is None):
             time.sleep(0.2)
         for p in (filt_p, back_p):
             if p.poll() is None:
                 p.kill()
-        ferr = filt_p.stderr.read().decode(errors="replace")
-        berr = back_p.stderr.read().decode(errors="replace")
+        ferr_f.seek(0); berr_f.seek(0)
+        ferr = ferr_f.read().decode(errors="replace")
+        berr = berr_f.read().decode(errors="replace")
         time.sleep(0.5)
 
         data = bytes(printer.received)
         blocks = [(d[4] + 256 * d[5], d[6] + 256 * d[7]) for d in
                   (data[m.start():m.start() + 8] for m in re.finditer(b"\x1dv0", data))]
-        print(f"filter exit {filt_p.returncode}, backend exit {back_p.returncode}")
+        print(f"filter exit {filt_p.returncode}, backend exit {back_p.returncode}, printer thread alive {printer.is_alive()}, printer error {printer.error!r}")
+        print("filter stderr tail:", " / ".join(l for l in ferr.splitlines() if not l.startswith("DEBUG"))[-400:])
+        print("backend stderr tail:", " / ".join(berr.splitlines())[-400:])
         print(f"printer received {len(data)} bytes, queries {[hex(q) for q in printer.queries]}")
         print(f"GS v 0 blocks: {blocks[:3]}")
         print("backend:", " / ".join(l for l in berr.splitlines() if l.startswith("INFO"))[:300])
@@ -130,7 +165,7 @@ def main():
         assert 0x09 in printer.queries, "filter never asked the printer for its name"
         assert len(data) > 300000, "too little printer data"
         assert any(w == 196 for w, _ in blocks), f"no 1568 px wide raster block: {blocks[:3]}"
-        print("ok: PDF -> raster -> rastertoM08F -> bluetooth backend -> printer, 1568 px wide page")
+        print(f"ok ({mode}): PDF -> raster -> rastertoM08F -> {os.path.basename(backend)} backend -> printer, 1568 px wide page")
 
 
 if __name__ == "__main__":

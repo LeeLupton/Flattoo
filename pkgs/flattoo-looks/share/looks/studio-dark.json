@@ -1,0 +1,57 @@
+{
+  "title": "Studio Dark",
+  "description": "Dark grey, cool accents, panel on top. Easy on the eyes under studio lights.",
+  "gtk_theme": "Arc-Dark",
+  "xfwm_theme": "Arc-Dark",
+  "icon_theme": "Papirus-Dark",
+  "cursor_theme": "Bibata-Modern-Classic",
+  "cursor_size": 24,
+  "font": "Inter 11",
+  "title_font": "Inter Bold 11",
+  "wallpaper": "slate",
+  "workspaces": {
+    "count": 3,
+    "names": [
+      "Draw",
+      "Reference",
+      "Desk"
+    ]
+  },
+  "panel": {
+    "position": "top",
+    "size": 40,
+    "icon_size": 24,
+    "dark": true,
+    "launchers": [
+      "menu",
+      "copilot",
+      "krita",
+      "mypaint",
+      "inkscape",
+      "sep",
+      "files",
+      "scan",
+      "calibrate",
+      "localsend",
+      "firefox"
+    ]
+  },
+  "xfwm": {
+    "tile_on_move": true,
+    "snap_to_border": true,
+    "focus_delay": 0,
+    "button_layout": "O|HMC",
+    "click_to_focus": true
+  },
+  "keyboard": {
+    "<Super>Return": "xfce4-terminal",
+    "<Super>e": "thunar",
+    "<Super>k": "krita",
+    "<Super>l": "flattoo-layout gui",
+    "<Super>p": "stencil-print --gui",
+    "<Super>space": "flattoo-copilot",
+    "Super_L": "xfce4-popup-whiskermenu"
+  },
+  "name": "studio-dark",
+  "app_names": "standard"
+}

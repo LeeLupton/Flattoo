@@ -1,0 +1,28 @@
+{
+  "title": "Reference + Draw",
+  "description": "Krita on the left two thirds, the reference photo viewer on the right.",
+  "workspaces": {
+    "count": 2,
+    "names": [
+      "Draw",
+      "Desk"
+    ]
+  },
+  "windows": [
+    {
+      "app": "krita",
+      "class": "krita",
+      "workspace": 0,
+      "place": "left",
+      "width": 66
+    },
+    {
+      "app": "ristretto",
+      "class": "ristretto",
+      "workspace": 0,
+      "place": "right",
+      "width": 34
+    }
+  ],
+  "name": "reference-and-draw"
+}

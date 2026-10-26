@@ -16,6 +16,7 @@
       <property name="size" type="uint" value="40"/>
       <property name="plugin-ids" type="array">
         <value type="int" value="1"/>
+        <value type="int" value="17"/>
         <value type="int" value="2"/>
         <value type="int" value="3"/>
         <value type="int" value="4"/>
@@ -36,6 +37,11 @@
   </property>
   <property name="plugins" type="empty">
     <property name="plugin-1" type="string" value="whiskermenu"/>
+    <property name="plugin-17" type="string" value="launcher">
+      <property name="items" type="array">
+        <value type="string" value="flattoo-copilot.desktop"/>
+      </property>
+    </property>
     <property name="plugin-2" type="string" value="launcher">
       <property name="items" type="array">
         <value type="string" value="org.kde.krita.desktop"/>

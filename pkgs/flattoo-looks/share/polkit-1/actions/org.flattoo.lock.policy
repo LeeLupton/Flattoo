@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN" "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<policyconfig>
+  <vendor>Flattoo</vendor>
+  <action id="org.flattoo.lock">
+    <description>Lock the studio setup</description>
+    <message>Lock the current desktop setup into the system</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/run/current-system/sw/bin/flattoo-lock-apply</annotate>
+  </action>
+  <action id="org.flattoo.unlock">
+    <description>Unlock the studio setup</description>
+    <message>Unlocking the studio setup requires the administrator password</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/run/current-system/sw/bin/flattoo-unlock-apply</annotate>
+  </action>
+</policyconfig>

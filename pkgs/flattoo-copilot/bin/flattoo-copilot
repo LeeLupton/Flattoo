@@ -1,0 +1,712 @@
+#!/usr/bin/env python3
+"""Ask Flattoo: the artist's copilot for everything that would otherwise be a terminal.
+
+It never runs a shell command the user typed. A request is mapped to one of
+a fixed set of actions — install/remove an app from the curated catalog, open
+an app, put it on the panel, update now, fix the printer, free disk space,
+show Wi-Fi/Bluetooth/battery status, change the look or layout, lock — and
+anything else is answered with what it *can* do. Changes are described in
+plain words and confirmed before they happen. The privileged part is a
+single helper (flattoo-admin, via polkit) with four subcommands.
+
+An LLM (Anthropic API or local Ollama) can be used to *understand* the
+request; its answer is a structured choice that is validated against the
+same allowlist and catalog, never a command.
+
+  flattoo-copilot                 GUI (menu entry "Ask Flattoo")
+  flattoo-copilot "install something like paint"
+  flattoo-copilot --dry-run "update now"
+"""
+
+import argparse
+import difflib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+import urllib.request
+
+CATALOG_PATH = "@catalog@"
+STATE_DIR = os.path.join(os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")), "flattoo")
+LOG = os.path.join(STATE_DIR, "copilot.log")
+APPS_NIX = "/etc/nixos/hosts/{host}/apps.nix"
+
+ACTIONS = {
+    "install": "Install an app from the catalog",
+    "remove": "Remove an app that was installed through me",
+    "open": "Open an installed app",
+    "panel": "Put an app on the panel",
+    "suggest": "Suggest apps for a need",
+    "update": "Install updates now (they also arrive every night by themselves)",
+    "update-status": "Say when the last update ran and whether it worked",
+    "printer-fix": "Find the stencil printer again",
+    "printer-bluetooth": "Pair a Bluetooth stencil printer",
+    "printer-network": "Add a Wi-Fi stencil printer",
+    "printer-calibrate": "Print the calibration page",
+    "print": "Print a stencil",
+    "disk": "Show free space and clean up old system versions",
+    "wifi": "Wi-Fi status and the Wi-Fi settings",
+    "bluetooth": "Bluetooth settings",
+    "battery": "Battery status",
+    "power": "Shut down, restart, sleep or log out",
+    "display": "Screen brightness and a second screen",
+    "look": "Change the look of the desktop",
+    "layout": "Open a window layout",
+    "lock": "Lock the setup",
+    "installed": "List what is installed",
+    "portfolio": "Build a gallery from your finished-work photos (nothing uploaded)",
+    "profile": "Your artist profile: résumé, bio, certifications",
+    "profile-skill": "Add a style or skill to your profile",
+    "exposure": "The free places you are listed, and which need a refresh",
+    "learn": "Open the help page about something (how do I…, what is…)",
+    "help": "Explain what I can do",
+}
+
+# Checked in order, after a strong catalog hit. First match wins.
+SYNONYMS = {
+    "update-status": ["last update", "up to date", "when did it update", "did it update", "is it updated"],
+    "update": ["update", "upgrade", "security", "patch", "latest version"],
+    "disk": ["disk", "storage", "free space", "free up", "clean up", "cleanup", "running out of", "out of space", "out of room", "space left", "full"],
+    "wifi": ["wifi", "wi-fi", "internet", "network", "wireless"],
+    "bluetooth": ["bluetooth", "pair", "headphones", "speaker"],
+    "power": ["turn off", "shut down", "shutdown", "power off", "switch off", "restart", "reboot", "log out", "logout", "go to sleep"],
+    "display": ["brightness", "too dark", "too bright", "dim", "second screen", "external screen", "monitor", "projector", "mirror the screen"],
+    "battery": ["battery", "charge", "charging", "power"],
+    "layout": ["layout", "workspace", "arrange windows", "side by side", "windows next to"],
+    "lock": ["lock the setup", "lock this", "make it permanent", "freeze", "lock down", "lock it"],
+    "look": ["theme", "dark mode", "light mode", "look", "colors", "colours", "wallpaper", "panel", "bigger text", "text bigger", "larger text", "font size", "appearance", "icons", "cursor"],
+    "installed": ["what is installed", "what do i have", "list apps", "installed apps", "what apps", "which apps"],
+    "portfolio": ["portfolio", "gallery", "showcase", "photos for instagram", "photos for my website", "post my work", "my work online", "contact sheet"],
+    "profile": ["resume", "résumé", "cv ", " cv", "my bio", "biography", "my profile", "artist profile", "certification", "press kit", "my skills"],
+    "exposure": ["exposure", "more clients", "reviews", "google listing", "google business", "promote", "promotion", "reputation", "marketing", "followers", "get found", "get noticed"],
+    "help": ["help", "what can you do", "what do you do"],
+}
+
+# Phrasings that ask to be shown or told something: the wiki answers those.
+LEARN_WORDS = ["how do i", "how to", "how can i", "what is", "what does", "what are", "show me", "explain", "teach",
+               "where is", "where are", "where do i", "help with", "help me", "guide", "manual", "wiki", "tutorial",
+               "learn", "tell me about", "instructions", "walk me through", "why does", "why is", "can i ",
+               "is it ", "is this", "should i", "do i need", "is there a way"]
+
+# Anything about printing goes to one of the printer actions.
+PRINTER_WORDS = ("print", "stencil", "thermal")
+PRINTER_RULES = [
+    ("printer-network", ["wifi", "wi-fi", "network", "lan", "ethernet", "ip address"]),
+    ("printer-bluetooth", ["bluetooth", "pair", "wireless"]),
+    ("printer-calibrate", ["calibrat", "too small", "too big", "wrong size", "size is", "ruler", "test page", "scale", "measure"]),
+    ("print", ["print a", "print my", "print this", "print the", "print it", "print out", "make a stencil", "print stencil", "how do i print", "how to print", "want to print", "print something"]),
+]
+
+
+def log(line):
+    os.makedirs(STATE_DIR, exist_ok=True)
+    with open(LOG, "a") as f:
+        f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + line + "\n")
+
+
+def run(cmd, **kw):
+    try:
+        return subprocess.run(cmd, text=True, capture_output=True, **kw)
+    except OSError as e:  # tool missing: report, never crash the dialog
+        return subprocess.CompletedProcess(cmd, 127, "", str(e))
+
+
+def spawn(cmd):
+    try:
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        return True
+    except OSError as e:
+        log(f"spawn {cmd[0]} failed: {e}")
+        return False
+
+
+def have_gui():
+    return bool(os.environ.get("DISPLAY")) and shutil.which("zenity") is not None
+
+
+# ------------------------------------------------------------------ catalog and machine
+
+def catalog():
+    with open(CATALOG_PATH) as f:
+        return json.load(f)
+
+
+def host():
+    try:
+        with open("/etc/flattoo/host") as f:
+            return f.read().strip() or "shop-laptop"
+    except OSError:
+        return "shop-laptop"
+
+
+def extra_apps():
+    """Packages added through the copilot (parsed from apps.nix)."""
+    try:
+        with open(APPS_NIX.format(host=host())) as f:
+            m = re.search(r"extra\s*=\s*\[([^\]]*)\]", f.read())
+            return re.findall(r'"([^"]+)"', m.group(1)) if m else []
+    except OSError:
+        return []
+
+
+def is_installed(entry):
+    if entry.get("default") or entry["pkg"] in extra_apps():
+        return True
+    d = entry.get("desktop")
+    if d:
+        for base in os.environ.get("XDG_DATA_DIRS", "/run/current-system/sw/share").split(":"):
+            if os.path.exists(os.path.join(base, "applications", d)):
+                return True
+    return False
+
+
+def machine():
+    ram = 0
+    try:
+        with open("/proc/meminfo") as f:
+            ram = int(re.search(r"MemTotal:\s+(\d+)", f.read()).group(1)) // (1024 * 1024)
+    except Exception:  # noqa: BLE001
+        pass
+    gpu = run(["sh", "-c", "lspci 2>/dev/null | grep -iE 'vga|3d|display'"]).stdout.strip()
+    disk = shutil.disk_usage("/")
+    return {"ram_gb": ram, "gpu": gpu, "free_gb": disk.free // (1024 ** 3), "dedicated_gpu": bool(re.search(r"nvidia|radeon|amd/ati.*(rx|vega|navi)", gpu, re.I))}
+
+
+def fit_note(entry, m):
+    notes = []
+    if m["ram_gb"] and entry.get("min_ram_gb", 2) > m["ram_gb"]:
+        notes.append(f"wants {entry['min_ram_gb']} GB RAM, this laptop has {m['ram_gb']}")
+    if entry.get("gpu") == "recommended" and not m["dedicated_gpu"]:
+        notes.append("runs better with a dedicated graphics card, which this laptop does not have")
+    if entry.get("heavy") and m["free_gb"] < 8:
+        notes.append(f"big download; only {m['free_gb']} GB free")
+    return "; ".join(notes)
+
+
+# ------------------------------------------------------------------ the wiki
+
+def wiki_dir():
+    for base in [os.environ.get("FLATTOO_WIKI", "")] + os.environ.get("XDG_DATA_DIRS", "").split(":") + ["/run/current-system/sw/share"]:
+        if not base:
+            continue
+        d = base if base.endswith("wiki") else os.path.join(base, "flattoo", "wiki")
+        if os.path.exists(os.path.join(d, "index.json")):
+            return d
+    return None
+
+
+def wiki_pages():
+    d = wiki_dir()
+    if not d:
+        return []
+    try:
+        with open(os.path.join(d, "index.json")) as f:
+            return json.load(f)["pages"]
+    except (OSError, ValueError, KeyError):
+        return []
+
+
+def wiki_search(text, n=4):
+    """Rank wiki pages for a request; the ranking lives in flattoo-wiki so there is one of it."""
+    if not shutil.which("flattoo-wiki") or not wiki_pages():
+        return []
+    r = run(["flattoo-wiki", "search", "--json", text])
+    try:
+        hits = json.loads(r.stdout or "[]")
+    except ValueError:
+        return []
+    byid = {p["id"]: p for p in wiki_pages()}
+    return [(h["score"], byid[h["id"]]) for h in hits[:n] if h["id"] in byid]
+
+
+def wiki_candidates(hits):
+    """One page when the best hit is clear, otherwise the top three to pick from."""
+    if len(hits) == 1 or hits[0][0] >= 3.0 or hits[0][0] >= 1.8 * hits[1][0]:
+        return [hits[0][1]["id"]]
+    return [p["id"] for _, p in hits[:3]]
+
+
+def wiki_open(page_id):
+    d = wiki_dir()
+    if not d:
+        return False
+    path = os.path.join(d, page_id + ".html")
+    return os.path.exists(path) and spawn(["xdg-open", "file://" + path])
+
+
+# ------------------------------------------------------------------ understanding
+
+def norm(s):
+    return re.sub(r"[^a-z0-9+#. ]+", " ", s.lower()).strip()
+
+
+def match_catalog(text, cat):
+    """Score catalog entries against the request. Returns sorted [(score, entry)]."""
+    t = norm(text)
+    words = set(t.split())
+    scored = []
+    for e in cat:
+        score = 0.0
+        names = [e["name"].lower(), e["pkg"].lower().split(".")[-1]] + [x.lower() for x in e["tags"]]
+        for n in names:
+            if re.search(r"\b" + re.escape(n) + r"\b", t):
+                score = max(score, 1.0 + len(n) / 40)
+            else:
+                r = difflib.SequenceMatcher(None, n, t).ratio()
+                if r > 0.8:
+                    score = max(score, r)
+                for w in words:
+                    if len(w) > 3 and (w == n or (len(n) > 3 and difflib.SequenceMatcher(None, w, n).ratio() > 0.86)):
+                        score = max(score, 0.9)
+        if score:
+            scored.append((score, e))
+    scored.sort(key=lambda x: -x[0])
+    return scored
+
+
+def classify(text, cat):
+    """Rule-based understanding. Returns (action, args, confidence)."""
+    t = norm(text)
+    verbs_install = any(v in t for v in ["install", "get me", "add ", "download", "i need", "i want", "something like", "like", "app for", "program for", "do you have", "is there", "get "])
+    verbs_remove = any(v in t for v in ["remove", "uninstall", "delete", "get rid"])
+    verbs_open = any(v in t for v in ["open", "launch", "start ", "run "])
+    verbs_panel = any(v in t for v in ["panel", "dock", "taskbar", "shortcut", "pin "])
+
+    # 1. Printing: every complaint about the printer is one of four fixes.
+    if any(w in t for w in PRINTER_WORDS):
+        for action, words in PRINTER_RULES:
+            if any(w in t for w in words):
+                return action, {}, 0.8
+        return "printer-fix", {}, 0.7
+
+    # 2. A catalog app named outright (name, pkg or a tag spelled out). A
+    #    question ("how do I scan a sketch") only counts here when it names
+    #    an app; otherwise the wiki answers it below.
+    asks = any(w in t for w in LEARN_WORDS)
+    hits = match_catalog(text, cat)
+    strong = [(s, e) for s, e in hits if s >= 1.0]
+    named = bool(strong) and (strong[0][1]["name"].lower() in t or strong[0][1]["pkg"].lower().split(".")[-1] in t)
+    if strong and not (asks and not named):
+        top = strong[0][1]
+        if verbs_remove:
+            return "remove", {"pkg": top["pkg"]}, 0.8
+        if verbs_panel and is_installed(top):
+            return "panel", {"pkg": top["pkg"]}, 0.8
+        if verbs_open and is_installed(top):
+            return "open", {"pkg": top["pkg"]}, 0.8
+        if named or (verbs_install and len(strong) == 1):
+            return ("open" if is_installed(top) else "install"), {"pkg": top["pkg"]}, 0.8
+        return "suggest", {"query": text, "candidates": [e["pkg"] for _, e in hits[:5]]}, 0.7
+
+    # 3. "How do I…" — the wiki, when it has a page that fits. Status questions
+    #    ("is it up to date") are answered live, not from a page.
+    if any(p in t for p in SYNONYMS["update-status"]):
+        return "update-status", {}, 0.8
+    explicit_install = any(v in t for v in ["install", "download", "add ", "get me", "i want", "i need"])
+    if asks and not (explicit_install or verbs_remove):
+        hits = wiki_search(text)
+        if hits and hits[0][0] >= 1.0:
+            return "learn", {"page": hits[0][1]["id"], "candidates": wiki_candidates(hits)}, 0.8
+
+    # 4. "add fine line to my skills / résumé / profile"
+    m = re.search(r"(?:add|put)\s+(.+?)\s+(?:to|on|in)\s+my\s+(?:skills?|r[eé]sum[eé]|cv|profile|bio)", t)
+    if m:
+        return "profile-skill", {"skill": re.sub(r"[^a-z0-9 +&/-]", "", m.group(1)).strip()[:40]}, 0.8
+
+    # 5. System chores.
+    for action, syns in SYNONYMS.items():
+        if any(s in t for s in syns):
+            return action, {}, 0.8
+
+    # 6. A vague app wish ("something for photos").
+    if hits:
+        return "suggest", {"query": text, "candidates": [e["pkg"] for _, e in hits[:5]]}, 0.6
+    # 7. Anything the wiki knows about.
+    whits = wiki_search(text)
+    if whits and whits[0][0] >= 1.0:
+        return "learn", {"page": whits[0][1]["id"], "candidates": wiki_candidates(whits)}, 0.5
+    return "help", {"unknown": text}, 0.3
+
+
+# ------------------------------------------------------------------ optional LLM
+
+LLM_SYSTEM = """You help a tattoo artist use a Linux laptop. You can only choose ONE action from this list and fill its arguments; you cannot run commands.
+Actions: {actions}
+Catalog packages (pkg: name — tags): {catalog}
+Reply with JSON only: {{"action": "<action>", "args": {{...}}, "say": "<one or two friendly sentences in plain English, no jargon>"}}
+For install/remove/open/panel the only argument is "pkg" and it MUST be one of the catalog pkg values. For suggest, args = {{"candidates": [pkg,...]}} with up to 4 pkgs ranked for the need, preferring installed ones and apps that fit the hardware: {machine}. Already installed: {installed}.
+Help pages (id: title — summary): {wiki}
+When the person asks how something works, where something is, or what something means, use "learn" with args = {{"page": "<id>"}} from that list and answer briefly in "say" using the page summary.
+If the request is not covered by the actions, use "help" and explain in "say" what you can do instead."""
+
+
+def llm_choose(text, cat, provider, machine_info, installed):
+    sysmsg = LLM_SYSTEM.format(
+        actions="; ".join(f"{k}: {v}" for k, v in ACTIONS.items()),
+        catalog="; ".join(f"{e['pkg']}: {e['name']} — {', '.join(e['tags'][:5])}" for e in cat),
+        machine=f"RAM {machine_info['ram_gb']} GB, dedicated GPU: {machine_info['dedicated_gpu']}, free disk {machine_info['free_gb']} GB",
+        installed=", ".join(installed),
+        wiki="; ".join(f"{p['id']}: {p['title']} — {p['summary']}" for p in wiki_pages()))
+    try:
+        if provider == "anthropic":
+            key = open(os.environ.get("FLATTOO_COPILOT_KEYFILE", "/etc/flattoo/copilot.key")).read().strip()
+            body = {"model": os.environ.get("FLATTOO_COPILOT_MODEL", "claude-haiku-5-5"), "max_tokens": 400,
+                    "system": sysmsg, "messages": [{"role": "user", "content": text}]}
+            req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=json.dumps(body).encode(),
+                                         headers={"content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                out = json.load(r)["content"][0]["text"]
+        elif provider == "ollama":
+            body = {"model": os.environ.get("FLATTOO_COPILOT_MODEL", "qwen2.5:3b"), "stream": False, "format": "json",
+                    "messages": [{"role": "system", "content": sysmsg}, {"role": "user", "content": text}]}
+            req = urllib.request.Request("http://127.0.0.1:11434/api/chat", data=json.dumps(body).encode(), headers={"content-type": "application/json"})
+            with urllib.request.urlopen(req, timeout=120) as r:
+                out = json.load(r)["message"]["content"]
+        else:
+            return None
+        m = re.search(r"\{.*\}", out, re.S)
+        d = json.loads(m.group(0)) if m else None
+    except Exception as e:  # noqa: BLE001
+        log(f"llm {provider} failed: {e}")
+        return None
+    # validate: this is the security boundary for the model's output
+    if not isinstance(d, dict) or d.get("action") not in ACTIONS:
+        return None
+    args = d.get("args") or {}
+    pkgs = {e["pkg"] for e in cat}
+    if d["action"] in ("install", "remove", "open", "panel"):
+        if args.get("pkg") not in pkgs:
+            return None
+        args = {"pkg": args["pkg"]}
+    elif d["action"] == "suggest":
+        args = {"candidates": [p for p in (args.get("candidates") or []) if p in pkgs][:4], "query": text}
+    elif d["action"] == "learn":
+        ids = {p["id"] for p in wiki_pages()}
+        if args.get("page") not in ids:
+            return None
+        args = {"page": args["page"], "candidates": [args["page"]]}
+    elif d["action"] == "profile-skill":
+        skill = re.sub(r"[^A-Za-z0-9 +&/-]", "", str(args.get("skill", ""))).strip()[:40]
+        if not skill:
+            return None
+        args = {"skill": skill}
+    else:
+        args = {}
+    say = str(d.get("say", ""))[:400]
+    return d["action"], args, say
+
+
+# ------------------------------------------------------------------ actions
+
+def admin(*args):
+    """Privileged helper through polkit. Returns (rc, output)."""
+    r = run(["pkexec", "/run/current-system/sw/bin/flattoo-admin", *args])
+    return r.returncode, (r.stdout + r.stderr)
+
+
+def do_install(pkg, cat, ui):
+    e = next(x for x in cat if x["pkg"] == pkg)
+    if is_installed(e):
+        return f"{e['name']} is already installed.", "open:" + pkg
+    note = fit_note(e, machine())
+    text = f"Install {e['name']}?\n\n{e['blurb']}" + (f"\n\nNote: {note}." if note else "") + "\n\nThis rebuilds the system; a few minutes, then it is in the menu."
+    if not ui.confirm(text, "Install"):
+        return "Okay, not installing.", None
+    ui.progress_start(f"Installing {e['name']}…")
+    rc, out = admin("install", pkg)
+    ui.progress_end()
+    log(f"install {pkg} rc={rc}")
+    if rc == 0:
+        return f"{e['name']} is installed. You will find it in the menu" + (" and I can put it on the panel if you like." if e.get("desktop") else "."), "open:" + pkg
+    return f"Installing {e['name']} did not finish:\n{out[-400:]}", None
+
+
+def do_remove(pkg, cat, ui):
+    e = next(x for x in cat if x["pkg"] == pkg)
+    if e.get("default"):
+        return f"{e['name']} is part of the base setup; I can take it off the panel but not remove it.", None
+    if pkg not in extra_apps():
+        return f"{e['name']} was not installed through me, so there is nothing to remove.", None
+    if not ui.confirm(f"Remove {e['name']}?", "Remove"):
+        return "Okay, keeping it.", None
+    ui.progress_start(f"Removing {e['name']}…")
+    rc, out = admin("remove", pkg)
+    ui.progress_end()
+    log(f"remove {pkg} rc={rc}")
+    return (f"{e['name']} is removed." if rc == 0 else f"Removing did not finish:\n{out[-400:]}"), None
+
+
+def do_open(pkg, cat):
+    e = next(x for x in cat if x["pkg"] == pkg)
+    d = e.get("desktop")
+    ok = spawn(["gtk-launch", d]) if d and shutil.which("gtk-launch") else spawn([pkg.split(".")[-1]])
+    return (f"Opening {e['name']}." if ok else f"Could not start {e['name']}."), None
+
+
+def do_panel(pkg, cat):
+    e = next(x for x in cat if x["pkg"] == pkg)
+    d = e.get("desktop")
+    if not d:
+        return f"{e['name']} has no launcher I can add.", None
+    r = run(["xfce4-panel", "--add=launcher", d])
+    return (f"{e['name']} is on the panel now." if r.returncode == 0 else "Could not add it to the panel (is the XFCE panel running?)."), None
+
+
+def do_suggest(query, candidates, cat, ui):
+    m = machine()
+    lines = []
+    entries = [next(x for x in cat if x["pkg"] == p) for p in candidates]
+    for e in entries[:4]:
+        state = "installed" if is_installed(e) else "not installed"
+        note = fit_note(e, m)
+        lines.append(f"• {e['name']} ({state}) — {e['blurb']}" + (f" Note: {note}." if note else ""))
+    text = "Here is what fits:\n\n" + "\n\n".join(lines)
+    if ui.gui:
+        rows = []
+        for e in entries[:4]:
+            rows += [e["pkg"], e["name"], ("Open" if is_installed(e) else "Install") + " — " + e["blurb"][:90]]
+        pick = ui.pick("Which one?", rows, text)
+        if pick:
+            e = next(x for x in cat if x["pkg"] == pick)
+            return (do_open(pick, cat) if is_installed(e) else do_install(pick, cat, ui))
+        return "Okay.", None
+    return text, None
+
+
+def do_update(ui):
+    if not ui.confirm("Install updates now?\n\nUpdates also arrive every night by themselves. Doing it now takes a few minutes; keep the laptop plugged in and open.", "Update"):
+        return "Okay, the nightly update will take care of it.", None
+    ui.progress_start("Updating…")
+    rc, out = admin("update")
+    ui.progress_end()
+    log(f"update rc={rc}")
+    return ("Updated. Most changes apply right away; anything deeper (like the kernel) lands at the next restart." if rc == 0 else f"The update did not finish:\n{out[-400:]}"), None
+
+
+def do_update_status():
+    r = run(["systemctl", "show", "nixos-upgrade.service", "-p", "ExecMainStatus", "-p", "ExecMainExitTimestamp", "-p", "Result"])
+    info = dict(l.split("=", 1) for l in r.stdout.splitlines() if "=" in l)
+    when = info.get("ExecMainExitTimestamp", "") or "never"
+    ok = info.get("ExecMainStatus") == "0"
+    gen = run(["sh", "-c", "ls -1 /nix/var/nix/profiles/ 2>/dev/null | grep -c system-"]).stdout.strip() or "?"
+    ver = run(["nixos-version"]).stdout.strip()
+    return (f"Last update: {when} — {'succeeded' if ok else 'did not finish' if info.get('ExecMainStatus') else 'no run recorded yet'}.\n"
+            f"System: {ver}\n{gen} versions kept for rollback at the boot menu."), None
+
+
+def do_disk(ui):
+    du = shutil.disk_usage("/")
+    free, total = du.free // (1024 ** 3), du.total // (1024 ** 3)
+    text = f"{free} GB free of {total} GB."
+    if ui.confirm(text + "\n\nClean up old system versions and caches? Keeps the last two weeks for rollback.", "Clean up"):
+        ui.progress_start("Cleaning up…")
+        rc, out = admin("cleanup")
+        ui.progress_end()
+        du2 = shutil.disk_usage("/")
+        return f"Done. {du2.free // (1024 ** 3)} GB free now (was {free}).", None
+    return text, None
+
+
+def do_simple(action):
+    if action == "printer-fix":
+        spawn(["stencil-fix-printer"]); return "Looking for the stencil printer…", None
+    if action == "printer-bluetooth":
+        spawn(["stencil-bt-setup"]); return "Opening the Bluetooth printer setup.", None
+    if action == "printer-network":
+        spawn(["stencil-net-setup"]); return "Opening the network printer setup.", None
+    if action == "printer-calibrate":
+        spawn(["stencil-calibrate", "--gui"]); return "Printing the calibration page.", None
+    if action == "print":
+        spawn(["stencil-print", "--gui"]); return "Opening Print Stencil. Pick the image and the size.", None
+    if action == "wifi":
+        st = run(["nmcli", "-t", "-f", "NAME,TYPE,DEVICE", "connection", "show", "--active"]).stdout.strip().replace(":", " · ")
+        spawn(["nm-connection-editor"])
+        return (f"Connected: {st}" if st else "Not connected.") + "\nOpening the Wi-Fi settings.", None
+    if action == "bluetooth":
+        spawn(["blueman-manager"]); return "Opening Bluetooth.", None
+    if action == "portfolio":
+        spawn(["flattoo-portfolio"]); return "Opening Portfolio. It finds your finished-work photos and builds a gallery folder; originals stay put, nothing is uploaded.", None
+    if action == "profile":
+        spawn(["flattoo-profile"]); return "Opening Artist Profile: résumé, bio, certifications, links.", None
+    if action == "exposure":
+        spawn(["flattoo-profile", "exposure-gui"]); return "Opening the exposure checklist: the free places a studio is listed and which ones need a refresh.", None
+    if action == "power":
+        spawn(["xfce4-session-logout"]); return "Pick Shut Down, Restart, Suspend or Log Out.", None
+    if action == "display":
+        spawn(["xfce4-display-settings"]); return "Opening the screen settings. Brightness is the sun keys on the keyboard (hold Fn if they do nothing).", None
+    if action == "battery":
+        out = run(["sh", "-c", "upower -i $(upower -e | grep -m1 BAT) 2>/dev/null | grep -E 'state|percentage|time to'"]).stdout.strip()
+        return (out or "No battery found."), None
+    if action == "look":
+        spawn(["flattoo-look", "gui"]); return "Opening Looks.", None
+    if action == "layout":
+        spawn(["flattoo-layout", "gui"]); return "Opening Layouts.", None
+    if action == "lock":
+        spawn(["flattoo-lock"]); return "Opening Lock This Setup.", None
+    return None
+
+
+def do_installed(cat):
+    base = [e["name"] for e in cat if e.get("default")]
+    extra = [next((e["name"] for e in cat if e["pkg"] == p), p) for p in extra_apps()]
+    return ("Base apps: " + ", ".join(base) + "." + (f"\n\nAdded: {', '.join(extra)}." if extra else "\n\nNothing added yet.")), None
+
+
+def do_learn(page, candidates, ui):
+    pages = {p["id"]: p for p in wiki_pages()}
+    if page not in pages:
+        return do_help()
+    if ui.gui and len(candidates) > 1:
+        rows = []
+        for pid in candidates:
+            if pid in pages:
+                rows += [pid, pages[pid]["title"], pages[pid]["summary"][:100]]
+        pick = ui.pick("Which page?", rows, "") or None
+        if pick is None:
+            return "Okay.", None
+        page = pick
+    if wiki_open(page):
+        return f"Opening “{pages[page]['title']}”.\n\n{pages[page]['summary']}", None
+    return pages[page]["summary"], None
+
+
+def do_help(unknown=None):
+    lead = f"I don't know how to do \"{unknown}\".\n\n" if unknown else ""
+    tail = "\n\nFor anything else, ask Lee."
+    if wiki_dir():
+        tail = "\n\nAsk me “how do I…” for the help pages, or open Help & How-To from the menu. For anything else, ask Lee."
+    return lead + "I can:\n" + "\n".join(f"• {v}" for v in ACTIONS.values()) + tail, None
+
+
+# ------------------------------------------------------------------ UI
+
+class UI:
+    def __init__(self, gui, dry_run=False):
+        self.gui = gui
+        self.dry = dry_run
+        self._prog = None
+
+    def ask(self):
+        if self.gui:
+            r = run(["zenity", "--entry", "--title=Ask Flattoo", "--width=520",
+                     "--text=What do you need? (\"something like Paint\", \"fix the printer\", \"update now\", \"free up space\"…)"])
+            return r.stdout.strip() if r.returncode == 0 else None
+        return input("What do you need? ").strip()
+
+    def confirm(self, text, ok="OK"):
+        if self.dry:
+            print("[dry-run] would ask:", text.replace("\n", " ")[:200]); return False
+        if self.gui:
+            return run(["zenity", "--question", "--title=Ask Flattoo", "--width=460", f"--text={text}", f"--ok-label={ok}", "--cancel-label=Not now"]).returncode == 0
+        print(text); return input(f"{ok}? [y/N] ").lower().startswith("y")
+
+    def pick(self, title, rows, intro):
+        if not self.gui:
+            print(intro); return None
+        r = run(["zenity", "--list", "--title=Ask Flattoo", "--width=640", "--height=360", f"--text={title}",
+                 "--column=id", "--column=App", "--column=About", "--hide-column=1", "--print-column=1", *rows])
+        return r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else None
+
+    def progress_start(self, text):
+        if self.gui:
+            self._prog = subprocess.Popen(["zenity", "--progress", "--title=Ask Flattoo", f"--text={text}", "--pulsate", "--no-cancel", "--auto-close", "--width=380"],
+                                          stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            print(text)
+
+    def progress_end(self):
+        if self._prog:
+            try:
+                self._prog.stdin.write(b"100\n"); self._prog.stdin.flush()
+            except OSError:
+                pass
+            self._prog.terminate(); self._prog = None
+
+    def say(self, text, follow=None):
+        if self.gui:
+            if follow and follow.startswith("open:"):
+                if run(["zenity", "--question", "--title=Ask Flattoo", "--width=460", f"--text={text}", "--ok-label=Open it", "--cancel-label=Done"]).returncode == 0:
+                    do_open(follow[5:], catalog())
+            else:
+                run(["zenity", "--info", "--title=Ask Flattoo", "--width=460", f"--text={text}"])
+        else:
+            print(text)
+
+
+def handle(text, ui, provider="none"):
+    cat = catalog()
+    installed = [e["pkg"] for e in cat if is_installed(e)]
+    choice = llm_choose(text, cat, provider, machine(), installed) if provider != "none" else None
+    say = ""
+    if choice:
+        action, args, say = choice
+    else:
+        action, args, _ = classify(text, cat)
+    log(f"request={text!r} action={action} args={json.dumps(args)} via={'llm' if choice else 'rules'}")
+    if ui.dry:
+        return action, args
+    if action == "install":
+        msg, follow = do_install(args["pkg"], cat, ui)
+    elif action == "remove":
+        msg, follow = do_remove(args["pkg"], cat, ui)
+    elif action == "open":
+        msg, follow = do_open(args["pkg"], cat)
+    elif action == "panel":
+        msg, follow = do_panel(args["pkg"], cat)
+    elif action == "suggest":
+        cands = args.get("candidates") or [e["pkg"] for _, e in match_catalog(text, cat)[:4]]
+        msg, follow = do_suggest(text, cands, cat, ui) if cands else do_help(text)
+    elif action == "update":
+        msg, follow = do_update(ui)
+    elif action == "update-status":
+        msg, follow = do_update_status()
+    elif action == "disk":
+        msg, follow = do_disk(ui)
+    elif action == "installed":
+        msg, follow = do_installed(cat)
+    elif action == "profile-skill":
+        skill = args.get("skill", "")
+        if skill and ui.confirm(f"Add “{skill}” to the styles and skills on your profile?", "Add"):
+            r = run(["flattoo-profile", "add-skill", skill])
+            msg, follow = (f"Added “{skill}”. Ask me for “my resume” to render it." if r.returncode == 0 else "Could not update the profile."), None
+        else:
+            msg, follow = "Okay, nothing added.", None
+    elif action == "learn":
+        msg, follow = do_learn(args.get("page"), args.get("candidates") or [args.get("page")], ui)
+    elif action == "help":
+        msg, follow = do_help(args.get("unknown"))
+    else:
+        r = do_simple(action)
+        msg, follow = r if r else do_help(text)
+    if say and action not in ("suggest",):
+        msg = say + "\n\n" + msg
+    ui.say(msg, follow)
+    return action, args
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="flattoo-copilot", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("request", nargs="*")
+    ap.add_argument("--dry-run", action="store_true", help="print the chosen action, change nothing")
+    ap.add_argument("--provider", default=os.environ.get("FLATTOO_COPILOT_PROVIDER", "none"), choices=["none", "anthropic", "ollama"])
+    ap.add_argument("--no-gui", action="store_true")
+    ap.add_argument("--list-actions", action="store_true", help="print the action allowlist as JSON")
+    args = ap.parse_args(argv)
+    if args.list_actions:
+        print(json.dumps(list(ACTIONS)))
+        return 0
+    ui = UI(have_gui() and not args.no_gui and not args.dry_run, dry_run=args.dry_run)
+    text = " ".join(args.request).strip() or ui.ask()
+    if not text:
+        return 1
+    action, a = handle(text, ui, args.provider)
+    if args.dry_run:
+        print(json.dumps({"action": action, "args": a}))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

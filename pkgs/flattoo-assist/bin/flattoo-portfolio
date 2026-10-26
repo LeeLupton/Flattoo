@@ -1,0 +1,272 @@
+#!/usr/bin/env python3
+"""Portfolio: a professional gallery from the finished-work photos scattered
+across Pictures, Downloads, Desktop and Documents.
+
+  flattoo-portfolio                 the guided version (menu entry "Portfolio")
+  flattoo-portfolio scan            list candidate photos (newest first)
+  flattoo-portfolio build [FILES…]  build ~/Portfolio/<date>/ from the given files (default: all candidates)
+  flattoo-portfolio status          how many new candidates since the last build (for reminders)
+
+Rules this tool keeps, whatever it is asked:
+  * originals are never touched; copies go to ~/Portfolio/<date>/
+  * every copy has its metadata stripped — camera, date, and above all GPS location
+  * nothing is uploaded or posted anywhere; the folder is yours to post from
+  * only photos of clients who agreed to be shown belong in it (the guide asks)
+"""
+import datetime as dt
+import hashlib
+import html
+import json
+import os
+import re
+import subprocess
+import sys
+
+from PIL import Image, ImageDraw, ImageFont, ImageOps
+
+HOME = os.path.expanduser("~")
+STATE = os.path.join(os.environ.get("XDG_STATE_HOME", os.path.join(HOME, ".local", "state")), "flattoo", "portfolio.json")
+PROFILE = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".config")), "flattoo", "profile.json")
+OUT_ROOT = os.path.join(HOME, "Portfolio")
+SOURCES = [os.path.join(HOME, d) for d in ("Pictures", "Downloads", "Desktop", "Documents")]
+EXTS = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".avif", ".tif", ".tiff"}
+MIN_EDGE = 1000  # smaller is a thumbnail, a screenshot or a stencil scan, not a finished piece
+SKIP = re.compile(r"(screenshot|-stencil|calibration|stencil-cal|thumb|icon|wallpaper)", re.I)
+
+
+def gui():
+    return bool(os.environ.get("DISPLAY")) and subprocess.run(["which", "zenity"], capture_output=True).returncode == 0
+
+
+def zenity(*args):
+    r = subprocess.run(["zenity", *args], capture_output=True, text=True)
+    return r.returncode, r.stdout.strip()
+
+
+def say(kind, text):
+    if gui():
+        zenity(f"--{kind}", "--title=Portfolio", f"--text={text}", "--width=460")
+    else:
+        print(text)
+
+
+def load_state():
+    try:
+        with open(STATE) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {"built": [], "last_build": None}
+
+
+def save_state(st):
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    with open(STATE, "w") as f:
+        json.dump(st, f, indent=2)
+
+
+def profile():
+    try:
+        with open(PROFILE) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def dhash(im, size=8):
+    g = ImageOps.exif_transpose(im).convert("L").resize((size + 1, size), Image.LANCZOS)
+    px = g.tobytes()
+    bits = 0
+    for row in range(size):
+        for col in range(size):
+            bits = (bits << 1) | (px[row * (size + 1) + col] > px[row * (size + 1) + col + 1])
+    return bits
+
+
+def scan(sources=None):
+    """Candidate photos: big enough, not a stencil/screenshot, not a near-duplicate. Newest first."""
+    seen = []
+    out = []
+    for root_dir in sources or SOURCES:
+        if not os.path.isdir(root_dir):
+            continue
+        for root, dirs, files in os.walk(root_dir):
+            dirs[:] = [d for d in dirs if not d.startswith(".") and os.path.join(root, d) != OUT_ROOT]
+            for f in files:
+                if os.path.splitext(f)[1].lower() not in EXTS or SKIP.search(f):
+                    continue
+                path = os.path.join(root, f)
+                try:
+                    with Image.open(path) as im:
+                        w, h = im.size
+                        if max(w, h) < MIN_EDGE:
+                            continue
+                        hsh = dhash(im)
+                except Exception:  # noqa: BLE001 — not an image we can read
+                    continue
+                if any(bin(hsh ^ o).count("1") <= 6 for o in seen):
+                    continue
+                seen.append(hsh)
+                out.append({"path": path, "mtime": os.path.getmtime(path), "size": [w, h], "hash": f"{hsh:016x}"})
+    out.sort(key=lambda e: -e["mtime"])
+    return out
+
+
+def strip_and_resize(src, dst, long_edge, square=False, mark=None):
+    with Image.open(src) as im:
+        im = ImageOps.exif_transpose(im).convert("RGB")
+        if square:
+            im = ImageOps.fit(im, (long_edge, long_edge), Image.LANCZOS)
+        else:
+            im.thumbnail((long_edge, long_edge), Image.LANCZOS)
+        if mark:
+            d = ImageDraw.Draw(im, "RGBA")
+            size = max(14, im.width // 40)
+            try:
+                font = ImageFont.truetype("DejaVuSans.ttf", size)
+            except OSError:
+                font = ImageFont.load_default()
+            tw = d.textlength(mark, font=font)
+            d.text((im.width - tw - size, im.height - size * 2), mark, fill=(255, 255, 255, 150), font=font)
+        # a fresh image object carries no EXIF: no camera, no date, no GPS
+        im.save(dst, "JPEG", quality=88, optimize=True, progressive=True)
+
+
+def build(files, title=None, mark=None):
+    prof = profile()
+    title = title or (prof.get("studio") or prof.get("name") or "Portfolio")
+    date = dt.date.today().isoformat()
+    out = os.path.join(OUT_ROOT, date)
+    for sub in ("web", "square", "thumbs"):
+        os.makedirs(os.path.join(out, sub), exist_ok=True)
+    entries = []
+    for i, path in enumerate(files, 1):
+        base = f"{i:03d}"
+        try:
+            strip_and_resize(path, os.path.join(out, "web", base + ".jpg"), 2048, mark=mark)
+            strip_and_resize(path, os.path.join(out, "square", base + ".jpg"), 1080, square=True, mark=mark)
+            strip_and_resize(path, os.path.join(out, "thumbs", base + ".jpg"), 480)
+        except Exception as e:  # noqa: BLE001
+            print(f"skipped {path}: {e}", file=sys.stderr)
+            continue
+        entries.append({"n": base, "source": path, "when": dt.date.fromtimestamp(os.path.getmtime(path)).isoformat()})
+    # gallery page
+    cards = "".join(
+        f'<a class="c" href="web/{e["n"]}.jpg"><img src="thumbs/{e["n"]}.jpg" loading="lazy" alt=""></a>' for e in entries)
+    page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{html.escape(title)}</title><style>
+:root{{color-scheme:light dark}}body{{margin:0;background:#111;color:#eee;font:16px/1.5 Inter,system-ui,sans-serif}}
+header{{padding:28px 20px 10px;text-align:center}}h1{{margin:0;font-weight:600;letter-spacing:.02em}}p{{color:#aaa;margin:.4rem 0 0}}
+.g{{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:6px;padding:10px}}
+.c img{{width:100%;aspect-ratio:1;object-fit:cover;display:block;border-radius:6px;background:#222}}
+footer{{padding:20px;text-align:center;color:#777;font-size:.9rem}}
+</style></head><body><header><h1>{html.escape(title)}</h1><p>{html.escape(prof.get("city", ""))}{" · " if prof.get("city") and prof.get("links", {}).get("instagram") else ""}{html.escape(prof.get("links", {}).get("instagram", ""))}</p></header>
+<div class="g">{cards}</div><footer>{len(entries)} pieces · {date}</footer></body></html>"""
+    with open(os.path.join(out, "index.html"), "w") as f:
+        f.write(page)
+    # contact sheet PDF: 12 per page
+    pages = []
+    cell, cols, rows = 300, 3, 4
+    for start in range(0, len(entries), cols * rows):
+        sheet = Image.new("RGB", (cols * cell + 60, rows * (cell + 40) + 80), "white")
+        d = ImageDraw.Draw(sheet)
+        d.text((30, 25), f"{title}  —  {date}", fill="black")
+        for k, e in enumerate(entries[start:start + cols * rows]):
+            with Image.open(os.path.join(out, "thumbs", e["n"] + ".jpg")) as t:
+                t = ImageOps.fit(t, (cell - 20, cell - 20), Image.LANCZOS)
+                x, y = 30 + (k % cols) * cell, 70 + (k // cols) * (cell + 40)
+                sheet.paste(t, (x, y))
+                d.text((x, y + cell - 14), f"{e['n']}  {e['when']}", fill="black")
+        pages.append(sheet)
+    if pages:
+        pages[0].save(os.path.join(out, "contact-sheet.pdf"), save_all=True, append_images=pages[1:], resolution=150)
+    with open(os.path.join(out, "README.txt"), "w") as f:
+        f.write(f"""{title} — portfolio built {date}
+
+web/      full-size copies for a website or email (2048 px, metadata removed)
+square/   1080 x 1080 crops for posts
+thumbs/   small previews
+index.html  open it in the browser: the gallery, ready to show on the laptop
+contact-sheet.pdf  print it or send it
+
+Your original photos were not changed or moved. Every copy here has its camera,
+date and location information removed. Nothing has been uploaded anywhere.
+Post only work the client agreed to share.
+""")
+    with open(os.path.join(out, "manifest.json"), "w") as f:
+        json.dump({"title": title, "date": date, "entries": entries}, f, indent=2)
+    st = load_state()
+    st["built"] = sorted(set(st.get("built", [])) | {e["source"] for e in entries})
+    st["last_build"] = date
+    save_state(st)
+    return out, entries
+
+
+def status():
+    st = load_state()
+    cands = scan()
+    new = [c for c in cands if c["path"] not in set(st.get("built", []))]
+    return {"candidates": len(cands), "new": len(new), "last_build": st.get("last_build")}
+
+
+def guided():
+    rc, _ = zenity("--question", "--title=Portfolio", "--width=520", "--ok-label=Find my photos", "--cancel-label=Not now",
+                   "--text=I will look through Pictures, Downloads, Desktop and Documents for finished-work photos and build a gallery folder.\n\n"
+                   "• Your originals stay exactly where they are.\n"
+                   "• Copies get their camera, date and <b>location</b> data removed.\n"
+                   "• Nothing is uploaded or posted; the folder is yours to post from.\n"
+                   "• Include only clients who agreed to be shown.")
+    if rc != 0:
+        return 1
+    cands = scan()
+    if not cands:
+        say("info", "I found no photos large enough to be finished work. Phone photos usually arrive in Downloads (LocalSend) or Pictures (cable).")
+        return 0
+    rows = []
+    for c in cands:
+        rows += ["TRUE", c["path"], os.path.basename(c["path"]), dt.date.fromtimestamp(c["mtime"]).isoformat(), f'{c["size"][0]}×{c["size"][1]}']
+    rc, picked = zenity("--list", "--checklist", "--title=Portfolio", "--width=760", "--height=520", "--separator=\n",
+                        "--text=Untick anything that is not finished work or not cleared by the client.",
+                        "--column=", "--column=path", "--column=Photo", "--column=Taken", "--column=Size",
+                        "--hide-column=2", "--print-column=2", *rows)
+    if rc != 0 or not picked:
+        return 1
+    files = picked.splitlines()
+    prof = profile()
+    mark = None
+    name = prof.get("studio") or prof.get("name")
+    if name:
+        rc, _ = zenity("--question", "--title=Portfolio", f"--text=Add a small “{name}” mark in the corner of each copy?", "--ok-label=Yes", "--cancel-label=No")
+        if rc == 0:
+            mark = name
+    out, entries = build(files, mark=mark)
+    rc, _ = zenity("--question", "--title=Portfolio", "--width=520",
+                   f"--text=Done: {len(entries)} pieces in <b>{out}</b>\n\nweb/ for your site, square/ for posts, contact-sheet.pdf to print.",
+                   "--ok-label=Open the gallery", "--cancel-label=Done")
+    if rc == 0:
+        subprocess.Popen(["xdg-open", os.path.join(out, "index.html")], start_new_session=True)
+    return 0
+
+
+def main(argv):
+    if not argv:
+        return guided() if gui() else print(__doc__)
+    cmd, *rest = argv
+    if cmd == "scan":
+        for c in scan(rest or None):
+            print(dt.date.fromtimestamp(c["mtime"]).isoformat(), f'{c["size"][0]}x{c["size"][1]}', c["path"])
+    elif cmd == "build":
+        files = rest or [c["path"] for c in scan()]
+        out, entries = build(files)
+        print(out, len(entries), "pieces")
+    elif cmd == "status":
+        print(json.dumps(status()))
+    elif cmd == "gui":
+        return guided()
+    else:
+        print(__doc__)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]) or 0)

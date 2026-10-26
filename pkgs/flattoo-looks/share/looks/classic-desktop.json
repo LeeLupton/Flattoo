@@ -1,0 +1,49 @@
+{
+  "title": "Classic Desktop",
+  "description": "Taskbar at the bottom, menu on the left, clock on the right, familiar names and icons. Feels like the last computer.",
+  "gtk_theme": "Fluent-Light",
+  "xfwm_theme": "Fluent-Light",
+  "icon_theme": "Fluent-light",
+  "cursor_theme": "Adwaita",
+  "cursor_size": 24,
+  "font": "Noto Sans 11",
+  "title_font": "Noto Sans Bold 11",
+  "wallpaper": "blue",
+  "workspaces": {
+    "count": 1,
+    "names": [
+      "Desktop"
+    ]
+  },
+  "panel": {
+    "position": "bottom",
+    "size": 36,
+    "icon_size": 22,
+    "dark": false,
+    "show_labels": true,
+    "launchers": [
+      "menu",
+      "copilot",
+      "files",
+      "firefox",
+      "krita",
+      "sep"
+    ]
+  },
+  "xfwm": {
+    "tile_on_move": false,
+    "snap_to_border": true,
+    "button_layout": "O|HMC"
+  },
+  "keyboard": {
+    "<Super>Return": "xfce4-terminal",
+    "<Super>e": "thunar",
+    "<Super>k": "krita",
+    "<Super>l": "flattoo-layout gui",
+    "<Super>p": "stencil-print --gui",
+    "<Super>space": "flattoo-copilot",
+    "Super_L": "xfce4-popup-whiskermenu"
+  },
+  "name": "classic-desktop",
+  "app_names": "familiar"
+}

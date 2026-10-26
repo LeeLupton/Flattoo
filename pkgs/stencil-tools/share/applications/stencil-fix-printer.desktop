@@ -5,5 +5,5 @@ Comment=Find the stencil printer again and clear any stuck state
 Exec=stencil-fix-printer
 Icon=printer
 Terminal=false
-Categories=Graphics;Printing;Settings;
+Categories=Settings;HardwareSettings;Printing;X-Flattoo;
 Keywords=stencil;printer;fix;usb;

@@ -1,0 +1,29 @@
+{
+  "title": "Paperwork",
+  "description": "Firefox and the file manager side by side on their own workspace; Krita untouched on the first.",
+  "workspaces": {
+    "count": 2,
+    "names": [
+      "Draw",
+      "Desk"
+    ]
+  },
+  "focus_workspace": 1,
+  "windows": [
+    {
+      "app": "firefox",
+      "class": "firefox",
+      "workspace": 1,
+      "place": "left",
+      "width": 60
+    },
+    {
+      "app": "thunar",
+      "class": "thunar",
+      "workspace": 1,
+      "place": "right",
+      "width": 40
+    }
+  ],
+  "name": "paperwork"
+}

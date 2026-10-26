@@ -15,8 +15,13 @@ in
     ./media.nix
     ./laptop.nix
     ./security.nix
+    ./network.nix
     ./remote.nix
     ./extras.nix
+    ./looks.nix
+    ./locked.nix
+    ./copilot.nix
+    ./assist.nix
   ];
 
   options.flattoo = {
@@ -59,6 +64,41 @@ in
 
     kernel.latest = mkEnableOption "the latest mainline kernel instead of the LTS kernel (brand-new Wi-Fi or audio chipsets only)";
 
+    flakeHost = mkOption {
+      type = types.str;
+      default = "shop-laptop";
+      description = "nixosConfigurations attribute this machine is built from; flattoo-lock rebuilds /etc/nixos#<flakeHost>.";
+    };
+
+    look = {
+      default = mkOption {
+        type = types.str;
+        default = "home";
+        description = "Look preset applied once at the artist's first login (see flattoo-look list).";
+      };
+      bundle = mkOption {
+        type = types.nullOr types.path;
+        default = null;
+        description = ''
+          A desktop captured by flattoo-lock (flattoo-look export). Its xfconf
+          channels become the system defaults; when flattoo.locked is on it is
+          restored into the artist's config at every login.
+        '';
+      };
+    };
+
+    locked = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        The stricter mode flattoo-lock switches on: the captured look is
+        enforced at login, panel/desktop customization needs the admin
+        password (xfconf kiosk), screen locks on idle, Firefox cannot install
+        add-ons, boot menu hidden, nightly upgrades come from the local
+        /etc/nixos copy (with weekly nixpkgs bumps) instead of GitHub.
+      '';
+    };
+
     desktop = {
       autoLogin = mkOption {
         type = types.bool;
@@ -73,6 +113,16 @@ in
       darkPanel = mkOption {
         type = types.bool;
         default = true;
+      };
+      gestures = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Touchpad gestures (touchegg): three-finger swipes between workspaces, pinch to zoom.";
+      };
+      i3Session = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Offer an 'i3 (Flattoo)' tiling session at the login screen next to XFCE.";
       };
     };
 
@@ -123,6 +173,23 @@ in
           Flake the laptop pulls every night. The new system becomes the boot
           default and takes effect at the next power-on; the running session is
           never touched. null disables nightly upgrades.
+        '';
+      };
+      allowedSigners = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        example = [
+          "lee@lupton.dev ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI..."
+          "flattoo-ci ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI..."
+        ];
+        description = ''
+          SSH public keys, in OpenSSH allowed_signers format, that may sign
+          commits on the upstream branch. When set, the nightly sync refuses
+          a fetched tip that is not signed by one of them (git verify-commit),
+          so neither a hijacked route to GitHub nor a compromised GitHub
+          account can push configuration onto the laptop. Every commit that
+          lands on the branch, including the weekly lock bump from CI, must
+          then be signed.
         '';
       };
       time = mkOption {

@@ -1,0 +1,334 @@
+#!/usr/bin/env python3
+"""Artist profile: the facts about you that make a résumé, a bio and a press
+kit, kept in one place and rendered on request. Also the exposure checklist
+— the free places a studio is listed — and the weekly reminder.
+
+  flattoo-profile                      guided menu (menu entry "Artist Profile")
+  flattoo-profile show
+  flattoo-profile set KEY VALUE        name | studio | city | since | bio | instagram | website | booking
+  flattoo-profile add-skill TEXT       e.g. "fine line", "cover-ups", "Japanese"
+  flattoo-profile remove-skill TEXT
+  flattoo-profile add-cert NAME YYYY-MM-DD   e.g. "Bloodborne pathogens" 2027-03-01
+  flattoo-profile render               ~/Documents/Artist Profile/resume.html + resume.docx + bio.txt
+  flattoo-profile exposure             the checklist with how stale each listing is
+  flattoo-profile touch NAME           mark a listing as updated today
+  flattoo-profile remind               the weekly nudge (notifications only; nothing leaves the laptop)
+
+Everything here is written by you and stays on the laptop. Nothing is looked
+up online and nothing is posted.
+"""
+import datetime as dt
+import html
+import json
+import os
+import re
+import subprocess
+import sys
+
+HOME = os.path.expanduser("~")
+PATH = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".config")), "flattoo", "profile.json")
+OUT = os.path.join(HOME, "Documents", "Artist Profile")
+STALE_DAYS = 45
+CERT_WARN_DAYS = 60
+
+DEFAULT_EXPOSURE = [
+    {"name": "Google Business Profile", "why": "The map listing: hours, photos, reviews. Most new clients see this first.", "last_updated": None},
+    {"name": "Instagram", "why": "Where tattoo work gets found. Post from Portfolio/square.", "last_updated": None},
+    {"name": "Studio website gallery", "why": "Portfolio/web is sized for it.", "last_updated": None},
+    {"name": "Yelp / review sites", "why": "Ask two happy clients a month; reply to every review.", "last_updated": None},
+    {"name": "Facebook page", "why": "Older clients and local groups find you here.", "last_updated": None},
+    {"name": "Convention and guest-spot calendar", "why": "Apply early; booths fill months ahead.", "last_updated": None},
+]
+
+
+def load():
+    try:
+        with open(PATH) as f:
+            p = json.load(f)
+    except (OSError, ValueError):
+        p = {}
+    p.setdefault("name", ""); p.setdefault("studio", ""); p.setdefault("city", ""); p.setdefault("since", "")
+    p.setdefault("bio", ""); p.setdefault("skills", []); p.setdefault("certifications", []); p.setdefault("awards", [])
+    p.setdefault("links", {}); p.setdefault("exposure", [dict(e) for e in DEFAULT_EXPOSURE])
+    return p
+
+
+def save(p):
+    os.makedirs(os.path.dirname(PATH), exist_ok=True)
+    with open(PATH, "w") as f:
+        json.dump(p, f, indent=2, ensure_ascii=False)
+
+
+def clean(text, limit=60):
+    return re.sub(r"[^\w .,'&/+()-]", "", text.strip())[:limit]
+
+
+def gui():
+    return bool(os.environ.get("DISPLAY")) and subprocess.run(["which", "zenity"], capture_output=True).returncode == 0
+
+
+def zenity(*args):
+    r = subprocess.run(["zenity", *args], capture_output=True, text=True)
+    return r.returncode, r.stdout.strip()
+
+
+# ---------------------------------------------------------------- render
+
+def render(p):
+    os.makedirs(OUT, exist_ok=True)
+    title = p["name"] or "Tattoo artist"
+    sub = " · ".join(x for x in (p["studio"], p["city"], f"since {p['since']}" if p["since"] else "") if x)
+    links = p.get("links", {})
+    certs = sorted(p["certifications"], key=lambda c: c.get("expires") or "")
+    page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{html.escape(title)} — résumé</title>
+<style>body{{max-width:760px;margin:40px auto;padding:0 20px;font:16px/1.5 Inter,system-ui,sans-serif;color:#1a1a1a}}
+h1{{margin:0;font-size:2rem}}.sub{{color:#555;margin:.2rem 0 1.4rem}}h2{{font-size:1.05rem;letter-spacing:.08em;text-transform:uppercase;color:#777;border-bottom:1px solid #ddd;padding-bottom:.2rem;margin-top:1.6rem}}
+ul{{padding-left:1.1rem}}.chips span{{display:inline-block;border:1px solid #ccc;border-radius:999px;padding:.1rem .7rem;margin:.15rem .25rem .15rem 0}}
+@media print{{body{{margin:0}}}}</style></head><body>
+<h1>{html.escape(title)}</h1><div class="sub">{html.escape(sub)}</div>
+{('<p>' + html.escape(p['bio']) + '</p>') if p['bio'] else ''}
+{('<h2>Styles and skills</h2><div class="chips">' + ''.join('<span>' + html.escape(s) + '</span>' for s in p['skills']) + '</div>') if p['skills'] else ''}
+{('<h2>Certifications</h2><ul>' + ''.join('<li>' + html.escape(c['name']) + (' — valid to ' + html.escape(c['expires']) if c.get('expires') else '') + '</li>' for c in certs) + '</ul>') if certs else ''}
+{('<h2>Awards and features</h2><ul>' + ''.join('<li>' + html.escape(a) + '</li>' for a in p['awards']) + '</ul>') if p['awards'] else ''}
+{('<h2>Find me</h2><ul>' + ''.join('<li>' + html.escape(k.capitalize()) + ': ' + html.escape(v) + '</li>' for k, v in links.items() if v) + '</ul>') if any(links.values()) else ''}
+</body></html>"""
+    with open(os.path.join(OUT, "resume.html"), "w") as f:
+        f.write(page)
+    with open(os.path.join(OUT, "bio.txt"), "w") as f:
+        f.write(f"{title}\n{sub}\n\n{p['bio']}\n\n" + (("Styles: " + ", ".join(p["skills"]) + "\n") if p["skills"] else "")
+                + "".join(f"{k.capitalize()}: {v}\n" for k, v in links.items() if v))
+    try:
+        import docx  # python-docx
+        d = docx.Document()
+        d.add_heading(title, 0)
+        if sub:
+            d.add_paragraph(sub)
+        if p["bio"]:
+            d.add_paragraph(p["bio"])
+        if p["skills"]:
+            d.add_heading("Styles and skills", 1)
+            d.add_paragraph(", ".join(p["skills"]))
+        if certs:
+            d.add_heading("Certifications", 1)
+            for c in certs:
+                d.add_paragraph(c["name"] + (f" — valid to {c['expires']}" if c.get("expires") else ""), style="List Bullet")
+        if p["awards"]:
+            d.add_heading("Awards and features", 1)
+            for a in p["awards"]:
+                d.add_paragraph(a, style="List Bullet")
+        if any(links.values()):
+            d.add_heading("Find me", 1)
+            for k, v in links.items():
+                if v:
+                    d.add_paragraph(f"{k.capitalize()}: {v}")
+        d.save(os.path.join(OUT, "resume.docx"))
+    except ImportError:
+        pass
+    with open(os.path.join(OUT, "profile.json"), "w") as f:
+        json.dump(p, f, indent=2, ensure_ascii=False)
+    return OUT
+
+
+# ---------------------------------------------------------------- reminders
+
+def days_since(iso):
+    if not iso:
+        return None
+    try:
+        return (dt.date.today() - dt.date.fromisoformat(iso)).days
+    except ValueError:
+        return None
+
+
+def nudges(p, portfolio_status=None):
+    """What is worth a nudge this week: nothing is done, it is only said."""
+    out = []
+    for c in p["certifications"]:
+        if c.get("expires"):
+            try:
+                left = (dt.date.fromisoformat(c["expires"]) - dt.date.today()).days
+            except ValueError:
+                continue
+            if left < 0:
+                out.append(f"{c['name']} expired on {c['expires']}. Renew it and tell me the new date (Ask Flattoo: 'add my certification').")
+            elif left <= CERT_WARN_DAYS:
+                out.append(f"{c['name']} expires in {left} days ({c['expires']}).")
+    stale = [e["name"] for e in p["exposure"] if (days_since(e.get("last_updated")) or 10**6) > STALE_DAYS]
+    if stale:
+        out.append("Not updated in a while: " + ", ".join(stale[:3]) + ". Fresh photos and correct hours bring clients in. Ask Flattoo: 'exposure'.")
+    if portfolio_status and portfolio_status.get("new", 0) >= 8:
+        out.append(f"{portfolio_status['new']} new photos since the last gallery. Ask Flattoo: 'make a portfolio'.")
+    if not p["skills"] and not p["name"]:
+        out.append("Your artist profile is empty. Two minutes in Artist Profile gives you a résumé and a bio to paste anywhere.")
+    return out
+
+
+def remind(p):
+    st = None
+    try:
+        r = subprocess.run(["flattoo-portfolio", "status"], capture_output=True, text=True, timeout=600)
+        st = json.loads(r.stdout or "{}")
+    except Exception:  # noqa: BLE001
+        pass
+    msgs = nudges(p, st)
+    if not msgs:
+        return 0
+    body = "\n".join("• " + m for m in msgs[:3])
+    if subprocess.run(["which", "notify-send"], capture_output=True).returncode == 0 and os.environ.get("DBUS_SESSION_BUS_ADDRESS") or os.environ.get("DISPLAY"):
+        subprocess.run(["notify-send", "-a", "Flattoo", "-t", "20000", "A few things worth a minute this week", body])
+    print(body)
+    return 0
+
+
+# ---------------------------------------------------------------- guided
+
+def guided(p):
+    while True:
+        rc, pick = zenity("--list", "--title=Artist Profile", "--width=620", "--height=420",
+                          "--text=Everything here stays on the laptop. Nothing is looked up or posted.",
+                          "--column=id", "--column=Do", "--column=What", "--hide-column=1", "--print-column=1",
+                          "edit", "Edit the basics", "Name, studio, city, since when, bio, links",
+                          "skill", "Add a style or skill", "Fine line, cover-ups, Japanese…",
+                          "cert", "Add a certification", "Bloodborne pathogens, first aid… with the expiry date",
+                          "award", "Add an award or feature", "Convention award, magazine, podcast…",
+                          "render", "Make my résumé and bio", "Documents/Artist Profile: resume.html, resume.docx, bio.txt",
+                          "exposure", "Exposure checklist", "The free places a studio is listed, and how stale each is")
+        if rc != 0 or not pick:
+            return 0
+        if pick == "edit":
+            rc, out = zenity("--forms", "--title=Artist Profile", "--text=The basics", "--separator=|",
+                             "--add-entry=Name", "--add-entry=Studio", "--add-entry=City", "--add-entry=Tattooing since (year)",
+                             "--add-entry=Instagram", "--add-entry=Website", "--add-entry=Booking (email or phone)", "--add-entry=One-paragraph bio")
+            if rc == 0:
+                vals = (out.split("|") + [""] * 8)[:8]
+                keys = ["name", "studio", "city", "since"]
+                for k, v in zip(keys, vals[:4]):
+                    if v.strip():
+                        p[k] = clean(v, 80)
+                for k, v in zip(["instagram", "website", "booking"], vals[4:7]):
+                    if v.strip():
+                        p["links"][k] = clean(v, 120)
+                if vals[7].strip():
+                    p["bio"] = vals[7].strip()[:800]
+                save(p)
+        elif pick == "skill":
+            rc, out = zenity("--entry", "--title=Artist Profile", "--text=Style or skill to add:")
+            if rc == 0 and out.strip():
+                add_skill(p, out)
+        elif pick == "cert":
+            rc, out = zenity("--forms", "--title=Artist Profile", "--text=Certification", "--separator=|", "--add-entry=Name", "--add-calendar=Valid until", "--forms-date-format=%Y-%m-%d")
+            if rc == 0 and out.strip():
+                name, _, date = out.partition("|")
+                add_cert(p, name, date)
+        elif pick == "award":
+            rc, out = zenity("--entry", "--title=Artist Profile", "--text=Award or feature:")
+            if rc == 0 and out.strip():
+                p["awards"].append(clean(out, 120)); save(p)
+        elif pick == "render":
+            out = render(p)
+            rc, _ = zenity("--question", "--title=Artist Profile", f"--text=Written to <b>{out}</b>: resume.html, resume.docx, bio.txt.", "--ok-label=Open the folder", "--cancel-label=Done")
+            if rc == 0:
+                subprocess.Popen(["xdg-open", out], start_new_session=True)
+        elif pick == "exposure":
+            exposure_gui(p)
+
+
+def exposure_rows(p):
+    rows = []
+    for e in p["exposure"]:
+        d = days_since(e.get("last_updated"))
+        state = "never" if d is None else ("today" if d == 0 else f"{d} days ago")
+        flag = "●" if d is None or d > STALE_DAYS else "○"
+        rows.append((e["name"], state, flag, e.get("why", "")))
+    return rows
+
+
+def exposure_gui(p):
+    rows = []
+    for name, state, flag, why in exposure_rows(p):
+        rows += [name, flag + " " + name, state, why]
+    rc, pick = zenity("--list", "--title=Exposure checklist", "--width=760", "--height=440",
+                      "--text=Where people find a studio for free. Pick one to mark it updated today. ● = worth a look.",
+                      "--column=id", "--column=Listing", "--column=Updated", "--column=Why it matters", "--hide-column=1", "--print-column=1", *rows)
+    if rc == 0 and pick:
+        touch(p, pick)
+
+
+def add_skill(p, text):
+    t = clean(text, 40)
+    if t and t.lower() not in [s.lower() for s in p["skills"]]:
+        p["skills"].append(t)
+    save(p)
+    return t
+
+
+def remove_skill(p, text):
+    p["skills"] = [s for s in p["skills"] if s.lower() != text.strip().lower()]
+    save(p)
+
+
+def add_cert(p, name, date):
+    try:
+        dt.date.fromisoformat(date.strip())
+    except ValueError:
+        date = ""
+    p["certifications"] = [c for c in p["certifications"] if c["name"].lower() != clean(name).lower()]
+    p["certifications"].append({"name": clean(name, 80), "expires": date.strip() or None})
+    save(p)
+
+
+def touch(p, name):
+    for e in p["exposure"]:
+        if e["name"].lower() == name.strip().lower():
+            e["last_updated"] = dt.date.today().isoformat()
+    save(p)
+
+
+def main(argv):
+    p = load()
+    if not argv:
+        return guided(p) if gui() else print(__doc__)
+    cmd, *rest = argv
+    if cmd == "show":
+        print(json.dumps(p, indent=2, ensure_ascii=False))
+    elif cmd == "set" and len(rest) >= 2:
+        key, value = rest[0], " ".join(rest[1:])
+        if key in ("instagram", "website", "booking"):
+            p["links"][key] = clean(value, 120)
+        elif key in ("name", "studio", "city", "since"):
+            p[key] = clean(value, 80)
+        elif key == "bio":
+            p["bio"] = value[:800]
+        else:
+            print("unknown key", key); return 2
+        save(p)
+    elif cmd == "add-skill" and rest:
+        print("added", add_skill(p, " ".join(rest)))
+    elif cmd == "remove-skill" and rest:
+        remove_skill(p, " ".join(rest))
+    elif cmd == "add-cert" and len(rest) >= 2:
+        add_cert(p, " ".join(rest[:-1]), rest[-1])
+    elif cmd == "add-award" and rest:
+        p["awards"].append(clean(" ".join(rest), 120)); save(p)
+    elif cmd == "render":
+        print(render(p))
+    elif cmd == "exposure":
+        for name, state, flag, why in exposure_rows(p):
+            print(f"{flag} {name:36} {state:14} {why}")
+    elif cmd == "touch" and rest:
+        touch(p, " ".join(rest))
+    elif cmd == "remind":
+        return remind(p)
+    elif cmd == "nudges":
+        print(json.dumps(nudges(p)))
+    elif cmd == "gui":
+        return guided(p)
+    elif cmd == "exposure-gui":
+        exposure_gui(p) if gui() else print("\n".join(f"{f} {n:36} {st}" for n, st, f, _ in exposure_rows(p)))
+    else:
+        print(__doc__); return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]) or 0)

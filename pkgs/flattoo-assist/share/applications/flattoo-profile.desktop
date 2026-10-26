@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Artist Profile
+Comment=Your résumé, bio, certifications and the free places you are listed — kept in one place
+Icon=contact-new
+Exec=flattoo-profile
+Terminal=false
+Categories=Office;X-Flattoo;
+Keywords=resume;cv;bio;profile;skills;certification;exposure;reviews;

@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# pkexec target for unlocking (separate program so polkit can require the admin password for it alone).
+exec /run/current-system/sw/bin/flattoo-lock-apply --unlock

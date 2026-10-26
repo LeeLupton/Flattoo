@@ -63,6 +63,10 @@
       packages.${system} = {
         inherit (pkgs)
           stencil-tools
+          flattoo-looks
+          flattoo-copilot
+          flattoo-wiki
+          flattoo-assist
           phomemo-cups
           brother-pj723-lpr
           brother-pj723-cupswrapper
@@ -75,15 +79,69 @@
           }) pkgs.brother-pj-cupswrappers
         );
         iso = self.nixosConfigurations.installer.config.system.build.isoImage;
+        # The website (GitHub Pages): `nix build .#site`
+        site = pkgs.flattoo-site.override { version = self.shortRev or self.dirtyShortRev or "dev"; };
+        # Desktop screenshots for the wiki, taken in a VM: `nix build .#screenshots`
+        screenshots = import ./tests/screenshots.nix { inherit pkgs self disko; };
         default = pkgs.stencil-tools;
       };
 
       checks.${system} = {
         stencil-tools = pkgs.stencil-tools.tests.roundtrip;
         phomemo-chain = pkgs.stencil-tools.tests.phomemoChain;
+        phomemo-chain-lan = pkgs.stencil-tools.tests.phomemoChainLan;
+        lan-scan = pkgs.stencil-tools.tests.lanScan;
+        looks-presets = pkgs.flattoo-looks.tests.presets;
+        looks-i3config = pkgs.flattoo-looks.tests.i3config;
+        looks-panel-load = pkgs.flattoo-looks.tests.panelLoad;
+        copilot-matcher = pkgs.flattoo-copilot.tests.matcher;
+        copilot-admin = pkgs.flattoo-copilot.tests.admin;
+        wiki-content = pkgs.flattoo-wiki.tests.content;
+        assist-offline = pkgs.flattoo-assist.tests.offline;
+        site = self.packages.${system}.site;
+        # Every catalog entry must name a real package in the pinned nixpkgs.
+        copilot-catalog = pkgs.runCommand "flattoo-copilot-catalog" {
+          names = map (
+            e:
+            (pkgs.lib.attrByPath (pkgs.lib.splitString "." e.pkg) (throw "catalog: ${e.pkg} is not in nixpkgs")
+              pkgs
+            ).name
+          ) (builtins.fromJSON (builtins.readFile ./pkgs/flattoo-copilot/share/flattoo/catalog.json));
+        } "echo $names > $out";
         brother-pj = self.packages.${system}.brother-pj;
         phomemo-cups = pkgs.phomemo-cups;
         shop-laptop-eval = self.nixosConfigurations.shop-laptop.config.system.build.toplevel;
+        # The laptop with apps the artist added through Ask Flattoo, and the
+        # module's refusal of anything outside the catalog.
+        copilot-apps-eval =
+          let
+            withApps = mkHost [
+              ./hosts/shop-laptop
+              {
+                flattoo.apps.extra = [
+                  "pinta"
+                  "blender"
+                  "kdePackages.kdenlive"
+                ];
+              }
+            ];
+            bad = mkHost [
+              ./hosts/shop-laptop
+              { flattoo.apps.extra = [ "nmap" ]; }
+            ];
+            rejected = lib.any (a: !a.assertion) bad.config.assertions;
+          in
+          assert rejected;
+          withApps.config.system.build.toplevel;
+        # The laptop after "Lock This Setup": captured bundle + locked mode.
+        locked-eval =
+          (mkHost [
+            ./hosts/shop-laptop
+            {
+              flattoo.locked = true;
+              flattoo.look.bundle = ./tests/look-bundle;
+            }
+          ]).config.system.build.toplevel;
       };
 
       formatter.${system} = pkgs.nixfmt;

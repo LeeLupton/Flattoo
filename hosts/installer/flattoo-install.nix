@@ -123,7 +123,10 @@ pkgs.writeShellApplication {
     echo "  * The flake copy with this machine's hardware file is at /etc/nixos on the new system."
     echo "    Commit hosts/$HOST/hardware-configuration.nix to the repo when convenient;"
     echo "    everything boots without it."
-    echo "  * Nightly upgrades pull github:LeeLupton/Flattoo. Push to main; it lands at the next power-on."
+    echo "  * Nightly upgrades mirror github:LeeLupton/Flattoo into /etc/nixos (keeping this machine's"
+    echo "    own files) and rebuild. Push to main; it lands at the next power-on."
+    echo "  * The artist never needs a terminal: Ask Flattoo (next to the menu) installs apps, updates,"
+    echo "    fixes the printer. Lock This Setup freezes the desktop once it is right."
     echo
     echo "Remove the USB stick and run:  reboot"
   '';

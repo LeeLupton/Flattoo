@@ -10,11 +10,26 @@ let
 in
 {
   environment.systemPackages = with pkgs; [
+    # -- drawing and painting
     krita # primary: pressure, mirror tools, prints at 100%
     mypaint # pure sketching, infinite canvas
-    inkscape # lettering and vector cleanup
+    rnote # pen-first sketching and handwriting, infinite canvas, vector strokes
+    azpainter # light painting app, fast on weak laptops, good tablet feel
+    inkscape # lettering and vector cleanup; Trace Bitmap turns scans into clean paths
     xournalpp # trace over a scanned sketch or a client photo
-    gimp # installed, not on the panel
+    (gimp-with-plugins.override { plugins = [ gimpPlugins.gmic ]; }) # not on the panel; G'MIC brings line-art, stencil, engrave, posterize filters
+    gmic-qt # G'MIC as a standalone app too
+    drawing # the simplest possible paint app for a quick crop or arrow
+
+    # -- stencil work beyond the right-click tools
+    potrace # bitmap -> clean vector outlines
+    autotrace # centerline tracing for single-line lettering
+    gpick # pick a color off a reference photo
+
+    # -- reference photos
+    nomacs # zoom, compare side by side, basic adjust
+
+    # -- in and out
     simple-scan # scanner front end
     imagemagick # used by the stencil tools for HEIC/PDF/SVG input
   ];

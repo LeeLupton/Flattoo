@@ -1,0 +1,28 @@
+{
+  "title": "Sketch to Stencil",
+  "description": "Scanner on the left, the scans folder on the right. Scan, right-click, Clean Lines, Print as Stencil.",
+  "workspaces": {
+    "count": 1,
+    "names": [
+      "Stencils"
+    ]
+  },
+  "windows": [
+    {
+      "app": "simple-scan",
+      "class": "simple-scan",
+      "workspace": 0,
+      "place": "left",
+      "width": 50
+    },
+    {
+      "app": "thunar",
+      "exec": "thunar ~/Pictures",
+      "class": "thunar",
+      "workspace": 0,
+      "place": "right",
+      "width": 50
+    }
+  ],
+  "name": "sketch-to-stencil"
+}

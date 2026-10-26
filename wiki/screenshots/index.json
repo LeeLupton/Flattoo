@@ -1,0 +1,90 @@
+[
+  {
+    "file": "look-home.png",
+    "caption": "Home, the default look: app icons on the screen like a phone, a dock at the bottom, time and battery at the top. Files, Photos, Documents by their familiar names."
+  },
+  {
+    "file": "look-home-dark.png",
+    "caption": "Home (dark): the same, for evening sessions."
+  },
+  {
+    "file": "look-studio-dark.png",
+    "caption": "Studio Dark: dark grey, cool accents, panel on top. Easy on the eyes under studio lights."
+  },
+  {
+    "file": "look-paper.png",
+    "caption": "Paper: light and warm, like the sketchbook."
+  },
+  {
+    "file": "look-night-session.png",
+    "caption": "Night Session: near-black; the panel hides until the mouse touches the bottom edge."
+  },
+  {
+    "file": "look-big-and-simple.png",
+    "caption": "Big and Simple: large text and icons, a dock with the four things that matter."
+  },
+  {
+    "file": "look-classic-desktop.png",
+    "caption": "Classic Desktop: taskbar at the bottom, menu on the left, familiar names and icons. Feels like the last computer."
+  },
+  {
+    "file": "look-gruvbox.png",
+    "caption": "Gruvbox: warm retro colors, panel on the left edge to keep the canvas wide."
+  },
+  {
+    "file": "apps-grid.png",
+    "caption": "The Super key, or the grid button on the dock: every app as an icon. Type a few letters to filter."
+  },
+  {
+    "file": "menu.png",
+    "caption": "The menu (top-left button, or the Super key): every app by category, search box at the top."
+  },
+  {
+    "file": "ask-flattoo.png",
+    "caption": "Ask Flattoo: type what you need in plain words."
+  },
+  {
+    "file": "ask-flattoo-paint.png",
+    "caption": "Ask Flattoo answering 'something like paint': the drawing apps that fit this laptop, Open or Install."
+  },
+  {
+    "file": "looks-gui.png",
+    "caption": "Looks: pick a whole-desktop preset or save the current one."
+  },
+  {
+    "file": "layouts-gui.png",
+    "caption": "Layouts: open and arrange a set of windows in one click."
+  },
+  {
+    "file": "lock-dialog.png",
+    "caption": "Lock This Setup: freezes the current desktop into the system. Unlock needs the administrator password."
+  },
+  {
+    "file": "portfolio-dialog.png",
+    "caption": "Portfolio: what it will do before it does anything \u2014 originals untouched, location data stripped, nothing uploaded, only clients who agreed."
+  },
+  {
+    "file": "profile-dialog.png",
+    "caption": "Artist Profile: the basics, skills, certifications, the r\u00e9sum\u00e9, the exposure checklist."
+  },
+  {
+    "file": "print-stencil.png",
+    "caption": "Print as Stencil with no stencil printer attached: it offers the other printers at true size instead. With the stencil printer on, it asks for width on skin, mirror, crisp lines or shading, copies."
+  },
+  {
+    "file": "files-right-click.png",
+    "caption": "Right-click an image in Files: Print as Stencil, Clean Lines, Open in Krita."
+  },
+  {
+    "file": "layout-reference-and-draw.png",
+    "caption": "Reference + Draw: Krita on the left, the image viewer on the right for the reference."
+  },
+  {
+    "file": "layout-paperwork.png",
+    "caption": "Paperwork: Firefox on the left, Files on the right."
+  },
+  {
+    "file": "i3-desktop.png",
+    "caption": "The i3 tiling session (pick it at the login screen): bar at the bottom, Super+D to launch, Super+Space for Ask Flattoo."
+  }
+]

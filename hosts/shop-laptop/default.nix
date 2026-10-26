@@ -14,7 +14,12 @@
   # Also written by the installer: hashed passwords for the two accounts.
   # Not in git either. With users.mutableUsers = true, the GitHub version of
   # this flake leaves the passwords already on disk alone.
-  ++ lib.optional (builtins.pathExists ./passwords.nix) ./passwords.nix;
+  ++ lib.optional (builtins.pathExists ./passwords.nix) ./passwords.nix
+  # Written on the machine by Ask Flattoo (apps the artist added) and by
+  # "Lock This Setup" (the captured look + flattoo.locked = true). Both are
+  # kept across nightly syncs from GitHub; see modules/autoupgrade.nix.
+  ++ lib.optional (builtins.pathExists ./apps.nix) ./apps.nix
+  ++ lib.optional (builtins.pathExists ./look.nix) ./look.nix;
 
   flattoo = {
     hostName = "studio";

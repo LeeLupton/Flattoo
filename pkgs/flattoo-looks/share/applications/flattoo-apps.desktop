@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Apps
+Comment=All apps as a grid of icons
+Icon=view-app-grid-symbolic
+Exec=flattoo-apps
+Terminal=false
+Categories=Utility;
+NoDisplay=true
+Keywords=apps;grid;launcher;home;

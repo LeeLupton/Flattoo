@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Portfolio
+Comment=Build a gallery from your finished-work photos: web sizes, square crops, contact sheet. Nothing uploaded.
+Icon=emblem-photos
+Exec=flattoo-portfolio
+Terminal=false
+Categories=Graphics;Photography;X-Flattoo;
+Keywords=portfolio;gallery;photos;instagram;website;showcase;

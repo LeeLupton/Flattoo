@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""Find stencil printers on the local network.
+
+Phomemo/QuYin Wi-Fi models ("WS") accept raw TCP on port 9100 and answer the
+same status queries as over USB, so the name query (1f 11 09 -> 1a 08 <name>)
+is both a liveness check and a fingerprint. No mDNS needed; every /24 the
+laptop sits on is swept in a few seconds.
+
+Also lists IPP/raw printers Avahi sees (Brother PJ-883 and office printers),
+so the queue setup can pick a PocketJet over Wi-Fi.
+
+Output, one per line:   <uri> <kind> <name>
+   socket://192.168.1.44:9100 phomemo M08F-WS-Q803
+   ipp://pj883.local:631/ipp/print driverless Brother PJ-883
+
+usage: stencil-lan-scan [--subnet CIDR ...] [--port N] [--timeout S] [--no-mdns]
+"""
+
+import argparse
+import ipaddress
+import re
+import socket
+import subprocess
+import sys
+from concurrent.futures import ThreadPoolExecutor
+
+QUERY = b"\x1f\x11\x09"
+
+
+def local_subnets():
+    nets = []
+    try:
+        out = subprocess.run(["ip", "-4", "-o", "addr"], capture_output=True, text=True, timeout=5).stdout
+    except Exception:  # noqa: BLE001
+        return nets
+    for line in out.splitlines():
+        m = re.search(r"\s(\S+)\s+inet\s+(\d+\.\d+\.\d+\.\d+/\d+)", line)
+        if not m or m.group(1) == "lo":
+            continue
+        net = ipaddress.ip_network(m.group(2), strict=False)
+        if net.is_loopback or net.is_link_local:
+            continue
+        if net.num_addresses > 1024:  # cap /22 and wider to the host's own /24
+            net = ipaddress.ip_network(f"{m.group(2).split('/')[0]}/24", strict=False)
+        nets.append(net)
+    return nets
+
+
+def probe(ip, port, timeout):
+    try:
+        with socket.create_connection((str(ip), port), timeout=timeout) as s:
+            s.settimeout(max(timeout, 0.8))
+            s.sendall(QUERY)
+            reply = b""
+            try:
+                while len(reply) < 17:
+                    chunk = s.recv(32)
+                    if not chunk:
+                        break
+                    reply += chunk
+            except socket.timeout:
+                pass
+    except OSError:
+        return None
+    if reply[:2] == b"\x1a\x08" and len(reply) >= 3:
+        name = reply[2:17].split(b"\x00", 1)[0].decode("ascii", errors="replace").strip()
+        return f"socket://{ip}:{port} phomemo {name or 'Phomemo'}"
+    return None
+
+
+def mdns_printers():
+    """Avahi-advertised IPP and raw printers: 'uri driverless name'."""
+    found = []
+    try:
+        out = subprocess.run(["avahi-browse", "-rptk", "_ipp._tcp"], capture_output=True, text=True, timeout=8).stdout
+        out += subprocess.run(["avahi-browse", "-rptk", "_pdl-datastream._tcp"], capture_output=True, text=True, timeout=8).stdout
+    except Exception:  # noqa: BLE001
+        return found
+    for line in out.splitlines():
+        if not line.startswith("="):
+            continue
+        f = line.split(";")
+        if len(f) < 10:
+            continue
+        name = f[3].replace("\\032", " ")
+        host, addr, port, txt = f[6], f[7], f[8], f[9]
+        stype = f[4]
+        if ":" in addr:  # skip IPv6 rows; the IPv4 row follows
+            continue
+        if stype == "_ipp._tcp":
+            rp = "ipp/print"
+            m = re.search(r'"rp=([^"]+)"', txt)
+            if m:
+                rp = m.group(1)
+            found.append(f"ipp://{addr}:{port}/{rp} driverless {name}")
+        else:
+            found.append(f"socket://{addr}:{port} raw {name}")
+    return found
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--subnet", action="append", help="CIDR to sweep (default: every LAN the laptop is on)")
+    ap.add_argument("--port", type=int, default=9100)
+    ap.add_argument("--timeout", type=float, default=0.4)
+    ap.add_argument("--no-mdns", action="store_true")
+    args = ap.parse_args()
+
+    nets = [ipaddress.ip_network(s, strict=False) for s in args.subnet] if args.subnet else local_subnets()
+    hosts = [ip for net in nets for ip in (net.hosts() if net.num_addresses > 1 else [net.network_address])]
+    results = []
+    if hosts:
+        with ThreadPoolExecutor(max_workers=96) as ex:
+            for r in ex.map(lambda ip: probe(ip, args.port, args.timeout), hosts):
+                if r:
+                    results.append(r)
+    if not args.no_mdns:
+        results += mdns_printers()
+    for r in results:
+        print(r)
+    return 0 if results else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

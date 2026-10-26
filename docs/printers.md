@@ -33,6 +33,25 @@ No stencil printer at all? **Print as Stencil** offers the other printers on
 the laptop and prints at true size on plain paper, for shops that transfer
 with a thermal copier.
 
+## On the LAN
+
+* **Brother PJ-883 / PJ-773** (Wi-Fi, AirPrint): driverless IPP. cups-browsed
+  (DNS-SD only) creates a queue by itself; `stencil-queue-setup` points
+  `Stencil` at the `driverless:` entry.
+* **Phomemo "WS" models** (M08F-WS, M08E-WS, TP8x-WS): raw TCP on port
+  9100 with the vendor filter in its `socket:` mode (third mode in the
+  binary, keyed on `socket:` in `DEVICE_URI`). CUPS' own `socket` backend
+  relays the status replies. Found three ways: DNS-SD/SNMP via `lpinfo`,
+  the **Add Network Stencil Printer** wizard (pick from a list or type the
+  IP), or `stencil-lan-scan`, which sweeps every subnet the laptop is on and
+  fingerprints Phomemo units by their answer to the name query
+  (`1f 11 09` → `1a 08 <name>`), no advertisement needed.
+* Verified offline every build: `checks.phomemo-chain-lan` runs the vendor
+  filter through CUPS' real `socket` backend to a fake TCP printer (name,
+  paper, busy queries answered; 1568 px page received), and
+  `checks.lan-scan` proves the fingerprint sweep finds the fake and ignores
+  closed ports.
+
 ## Bluetooth
 
 Phomemo/QuYin printers and the Bluetooth PocketJets (PJ-762/763/773) talk

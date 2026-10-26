@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Unlock Setup
+Comment=Allow changes again (admin password)
+Icon=changes-allow
+Exec=flattoo-unlock
+Terminal=false
+Categories=Settings;System;
+Keywords=flattoo;look;theme;layout;workspace;lock;

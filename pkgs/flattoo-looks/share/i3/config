@@ -1,0 +1,142 @@
+# Flattoo i3 session. Pick "i3 (Flattoo)" at the login screen instead of XFCE.
+# Tiling: every window gets its space, no overlapping, keyboard driven.
+# Super is the key for everything.
+
+set $mod Mod4
+font pango:Inter 11
+floating_modifier $mod
+focus_follows_mouse no
+workspace_auto_back_and_forth yes
+default_border pixel 2
+default_floating_border pixel 2
+hide_edge_borders smart
+gaps inner 8
+gaps outer 2
+smart_gaps on
+
+set $ws1 "1:Draw"
+set $ws2 "2:Reference"
+set $ws3 "3:Web"
+set $ws4 "4:Files"
+set $ws5 "5:Print"
+
+assign [class="(?i)krita"] $ws1
+assign [class="(?i)mypaint"] $ws1
+assign [class="(?i)azpainter"] $ws1
+assign [class="(?i)inkscape"] $ws1
+assign [class="(?i)ristretto"] $ws2
+assign [class="(?i)nomacs"] $ws2
+assign [class="(?i)firefox"] $ws3
+assign [class="(?i)thunar"] $ws4
+assign [class="(?i)simple-scan"] $ws5
+assign [class="(?i)system-config-printer"] $ws5
+
+for_window [class="(?i)zenity"] floating enable
+for_window [class="(?i)gpick"] floating enable
+for_window [class="(?i)localsend"] floating enable
+for_window [class="(?i)blueman"] floating enable
+for_window [class="(?i)xfce4-notifyd"] floating enable
+for_window [title="(?i)^Preferences|^Settings|^Print$"] floating enable
+for_window [window_role="pop-up|task_dialog|dialog"] floating enable
+
+# -- apps
+bindsym $mod+Return exec xfce4-terminal
+bindsym $mod+d exec --no-startup-id flattoo-apps
+bindsym $mod+k exec krita
+bindsym $mod+e exec thunar
+bindsym $mod+b exec firefox
+bindsym $mod+p exec --no-startup-id stencil-print --gui
+bindsym $mod+Shift+p exec --no-startup-id stencil-calibrate --gui
+bindsym $mod+l exec --no-startup-id flattoo-layout gui
+bindsym $mod+Shift+l exec --no-startup-id flattoo-look gui
+bindsym Print exec --no-startup-id xfce4-screenshooter
+
+# -- windows
+bindsym $mod+Shift+q kill
+bindsym $mod+f fullscreen toggle
+bindsym $mod+space exec --no-startup-id flattoo-copilot
+bindsym $mod+Shift+f floating toggle
+bindsym $mod+Shift+space focus mode_toggle
+bindsym $mod+Left focus left
+bindsym $mod+Down focus down
+bindsym $mod+Up focus up
+bindsym $mod+Right focus right
+bindsym $mod+Shift+Left move left
+bindsym $mod+Shift+Down move down
+bindsym $mod+Shift+Up move up
+bindsym $mod+Shift+Right move right
+bindsym $mod+h split h
+bindsym $mod+v split v
+bindsym $mod+s layout stacking
+bindsym $mod+w layout tabbed
+bindsym $mod+t layout toggle split
+bindsym $mod+a focus parent
+
+# -- workspaces
+bindsym $mod+1 workspace $ws1
+bindsym $mod+2 workspace $ws2
+bindsym $mod+3 workspace $ws3
+bindsym $mod+4 workspace $ws4
+bindsym $mod+5 workspace $ws5
+bindsym $mod+Shift+1 move container to workspace $ws1
+bindsym $mod+Shift+2 move container to workspace $ws2
+bindsym $mod+Shift+3 move container to workspace $ws3
+bindsym $mod+Shift+4 move container to workspace $ws4
+bindsym $mod+Shift+5 move container to workspace $ws5
+bindsym $mod+Tab workspace next
+bindsym $mod+Shift+Tab workspace prev
+
+# -- resize
+mode "resize" {
+    bindsym Left resize shrink width 5 px or 5 ppt
+    bindsym Down resize grow height 5 px or 5 ppt
+    bindsym Up resize shrink height 5 px or 5 ppt
+    bindsym Right resize grow width 5 px or 5 ppt
+    bindsym Return mode "default"
+    bindsym Escape mode "default"
+    bindsym $mod+r mode "default"
+}
+bindsym $mod+r mode "resize"
+
+# -- session
+bindsym $mod+Shift+c reload
+bindsym $mod+Shift+r restart
+bindsym $mod+Shift+e exec --no-startup-id "i3-nagbar -t warning -m 'Log out of i3?' -B 'Yes' 'i3-msg exit'"
+bindsym XF86AudioRaiseVolume exec --no-startup-id pactl set-sink-volume @DEFAULT_SINK@ +5%
+bindsym XF86AudioLowerVolume exec --no-startup-id pactl set-sink-volume @DEFAULT_SINK@ -5%
+bindsym XF86AudioMute exec --no-startup-id pactl set-sink-mute @DEFAULT_SINK@ toggle
+bindsym XF86MonBrightnessUp exec --no-startup-id xfce4-power-manager --brightness-up 2>/dev/null || true
+bindsym XF86MonBrightnessDown exec --no-startup-id xfce4-power-manager --brightness-down 2>/dev/null || true
+
+# -- colours (Arc-Dark-ish)
+client.focused          #5294e2 #5294e2 #ffffff #5294e2 #5294e2
+client.focused_inactive #2f343f #2f343f #d3dae3 #2f343f #2f343f
+client.unfocused        #2f343f #2f343f #7c818c #2f343f #2f343f
+client.urgent           #e53935 #e53935 #ffffff #e53935 #e53935
+client.background       #1b1e24
+
+bar {
+    status_command i3status
+    position top
+    font pango:Inter 11
+    tray_output primary
+    colors {
+        background #1b1e24
+        statusline #d3dae3
+        separator  #4b5162
+        focused_workspace  #5294e2 #5294e2 #ffffff
+        active_workspace   #2f343f #2f343f #d3dae3
+        inactive_workspace #1b1e24 #1b1e24 #7c818c
+        urgent_workspace   #e53935 #e53935 #ffffff
+    }
+}
+
+# -- autostart: the same helpers the XFCE session gets
+exec --no-startup-id feh --bg-fill @wallpaper@
+exec --no-startup-id nm-applet
+exec --no-startup-id blueman-applet
+exec --no-startup-id xfce4-power-manager
+exec --no-startup-id xfce4-notifyd
+exec --no-startup-id xfce4-clipman
+exec --no-startup-id flattoo-session
+exec --no-startup-id xset s 900 900
