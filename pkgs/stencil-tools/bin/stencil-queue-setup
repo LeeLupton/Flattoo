@@ -36,21 +36,25 @@ lpstat -r >/dev/null 2>&1 || { log "cups is not running"; exit 0; }
 
 models_list="$(lpinfo -m 2>/dev/null || true)"
 
-# ppd_for_prefix <model-string>: longest Phomemo PPD whose basename is a
-# case-insensitive prefix of the model string (after normalising _ and space to -).
+# ppd_for_prefix <model-string>: the Phomemo PPD whose basename best matches
+# the model string: a prefix match wins over a contains match, longer wins
+# over shorter. Vendor words and separators are normalised away first, so
+# "Phomemo M08F-WS-Q803" -> M08F-WS, "QuYin M08F_PLUS" -> M08F, "TP88" -> TP88.
 ppd_for_prefix() {
-  local want norm best bestlen line ppd base b
+  local want norm best bestscore line ppd base b score
   want="$1"
-  norm="$(printf '%s' "$want" | tr '_ ' '--' | tr '[:upper:]' '[:lower:]')"
-  best=""; bestlen=0
+  norm="$(printf '%s' "$want" | tr '_ ' '--' | tr '[:upper:]' '[:lower:]' | sed -E 's/^(phomemo|quyin|brother)-*//')"
+  best=""; bestscore=0
   while IFS= read -r line; do
     ppd="${line%% *}"
     case "$ppd" in Phomemo/*|*/qy/*) ;; *) continue ;; esac
     base="$(basename "$ppd" .ppd)"
     b="$(printf '%s' "$base" | tr '_ ' '--' | tr '[:upper:]' '[:lower:]')"
-    if [ "${norm#"$b"}" != "$norm" ] && [ "${#b}" -gt "$bestlen" ]; then
-      best="$ppd"; bestlen="${#b}"
+    score=0
+    if [ "${norm#"$b"}" != "$norm" ]; then score=$((1000 + ${#b}))
+    elif [ "${norm#*"$b"}" != "$norm" ]; then score=$((${#b}))
     fi
+    if [ "$score" -gt "$bestscore" ]; then best="$ppd"; bestscore="$score"; fi
   done <<<"$models_list"
   printf '%s' "$best"
 }
@@ -108,6 +112,45 @@ if [ -z "$uri" ] || [ "$kind" = "brother-raw" ]; then
   fi
 fi
 
+# 2b. Network: DNS-SD / SNMP discovered printers whose name says stencil printer.
+#     `lpinfo -l -v` blocks: "Device: uri = X" then info / make-and-model lines.
+if [ -z "$uri" ]; then
+  while IFS='|' read -r nuri ninfo; do
+    [ -n "$nuri" ] || continue
+    case "$nuri" in dnssd://*|socket://*|lpd://*|ipp://*|ipps://*) ;; *) continue ;; esac
+    case "$ninfo" in
+      *PJ-7*|*PJ7*|*PJ-8*|*PJ8*|*PocketJet*)
+        # AirPrint models (PJ-773, PJ-8xx) prefer driverless; otherwise vendor PPD + raw socket.
+        dl="$(printf '%s\n' "$models_list" | grep -i 'driverless:' | grep -iE "PJ-?[78][0-9]{2}" | head -n1 || true)"
+        if [ -n "$dl" ]; then ppd="${dl%% *}"; uri="${ppd#driverless:}"; kind="driverless"
+        else ppd="$(ppd_for_model "$ninfo")"; uri="$nuri"; kind="brother"; fi
+        break ;;
+      *M08*|*TP8[0-9]*|*T08*|*[Pp]homemo*|*QuYin*|*QUYIN*)
+        cand="$(ppd_for_prefix "$(printf '%s' "$ninfo" | sed -E 's/^(Phomemo|QuYin)[[:space:]]+//I')")"
+        [ -n "$cand" ] || cand="$(ppd_for_prefix "$ninfo")"
+        if [ -n "$cand" ]; then uri="$nuri"; ppd="$cand"; kind="phomemo"; break; fi ;;
+    esac
+  done < <(lpinfo -l --timeout 6 -v 2>/dev/null | awk '
+      /^Device: uri = / { if (u != "") print u "|" i; u = $4; i = ""; next }
+      /^[[:space:]]+(info|make-and-model) = / { sub(/^[^=]*= */, ""); if (i == "") i = $0 }
+      END { if (u != "") print u "|" i }' || true)
+fi
+
+# 2c. Subnet sweep: Phomemo "WS" models that advertise nothing still answer
+#     the name query on TCP 9100 (stencil-lan-scan fingerprints them).
+if [ -z "$uri" ] && command -v stencil-lan-scan >/dev/null; then
+  while read -r u k n; do
+    case "$k" in
+      phomemo)
+        cand="$(ppd_for_prefix "$n")"
+        [ -n "$cand" ] || continue
+        uri="$u"; ppd="$cand"; kind="phomemo"; break ;;
+      driverless)
+        case "$n" in *PJ-8*|*PJ8*) uri="$u"; ppd="everywhere"; kind="driverless"; break ;; esac ;;
+    esac
+  done < <(stencil-lan-scan 2>/dev/null || true)
+fi
+
 # 3. A paired Bluetooth stencil printer (set up once with stencil-bt-setup).
 if [ -z "$uri" ] && command -v bluetoothctl >/dev/null; then
   while read -r _ mac name; do
@@ -132,22 +175,29 @@ fi
 
 log "found $kind printer at $uri${ppd:+ (ppd: $ppd)}"
 
+create_queue() {
+  if [ -n "$ppd" ]; then
+    lpadmin -p "$QUEUE" -E -v "$uri" -m "$ppd" -D "Stencil printer" -L "Studio"
+  else
+    log "no vendor PPD for this model; adding as driverless/raw"
+    lpadmin -p "$QUEUE" -E -v "$uri" -m everywhere -D "Stencil printer" -L "Studio" \
+      || lpadmin -p "$QUEUE" -E -v "$uri" -D "Stencil printer" -L "Studio"
+  fi
+}
+
 if lpstat -p "$QUEUE" >/dev/null 2>&1; then
   current="$(lpstat -v "$QUEUE" 2>/dev/null | awk '{print $NF}')"
   if [ "$current" = "$uri" ]; then
     log "queue $QUEUE already points at $uri"
   else
-    log "re-pointing $QUEUE from $current to $uri"
-    if [ -n "$ppd" ]; then lpadmin -p "$QUEUE" -v "$uri" -m "$ppd"; else lpadmin -p "$QUEUE" -v "$uri"; fi
+    # The driver may change with the transport (driverless vs vendor PPD):
+    # recreate rather than re-point.
+    log "replacing $QUEUE: $current -> $uri"
+    lpadmin -x "$QUEUE" 2>/dev/null || true
+    create_queue
   fi
 else
-  if [ -n "$ppd" ]; then
-    lpadmin -p "$QUEUE" -E -v "$uri" -m "$ppd" -D "Stencil printer" -L "Studio"
-  else
-    log "no PPD for this model; adding as driverless/raw"
-    lpadmin -p "$QUEUE" -E -v "$uri" -m everywhere -D "Stencil printer" -L "Studio" \
-      || lpadmin -p "$QUEUE" -E -v "$uri" -D "Stencil printer" -L "Studio"
-  fi
+  create_queue
 fi
 
 # Stencil defaults: no scaling, Letter if the PPD has it, monochrome, not shared,

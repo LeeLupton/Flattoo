@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Add a stencil printer that is on the shop Wi-Fi / LAN.
+Menu entry: "Add Network Stencil Printer".
+
+Lists what CUPS can see on the network (DNS-SD and SNMP discovery), or takes
+an IP address the artist types in. Probes the printer, picks the transport
+(driverless IPP for AirPrint models, raw port 9100 for the rest) and hands it
+to stencil-queue-setup so the Stencil queue gets the right PPD and defaults.
+
+Command line: stencil-net-setup [--no-gui] [--ip 192.168.1.50 --model M08F]
+"""
+
+import argparse
+import os
+import re
+import socket
+import subprocess
+import sys
+
+KNOWN = re.compile(r"(M0[0-9]|M08|TP8[0-9]|T08|Phomemo|QuYin|PJ-?[678][0-9]{2}|PocketJet|Brother|Stencil)", re.I)
+MODELS = ["M08F", "M08F-WS", "M08F Pro", "M08FS", "TP88", "TP87", "TP86", "TP85", "TP84", "TP83", "TP82", "TP81",
+          "T08FS", "PJ-773", "PJ-763", "PJ-762", "PJ-723", "PJ-722", "PJ-883", "PJ-863", "PJ-823", "Other"]
+
+
+def have_gui():
+    return bool(os.environ.get("DISPLAY")) and subprocess.run(["which", "zenity"], capture_output=True).returncode == 0
+
+
+def zenity(*args):
+    r = subprocess.run(["zenity", *args], capture_output=True, text=True)
+    return r.returncode, r.stdout.strip()
+
+
+def say(gui, kind, text):
+    if gui:
+        zenity(f"--{kind}", "--title=Network stencil printer", f"--text={text}", "--width=420")
+    else:
+        print(text)
+
+
+def discover(timeout=8):
+    """[(uri, info)] from `lpinfo -l -v` network devices."""
+    try:
+        out = subprocess.run(["lpinfo", "-l", "--timeout", str(timeout), "-v"], capture_output=True, text=True, timeout=timeout + 20).stdout
+    except Exception:  # noqa: BLE001
+        return []
+    found, uri, info, cls = [], None, "", ""
+    for line in out.splitlines() + ["Device: uri = END"]:
+        m = re.match(r"Device: uri = (.*)", line)
+        if m:
+            if uri and cls == "network" and re.match(r"(dnssd|socket|ipp|ipps|lpd)://", uri):
+                found.append((uri, info))
+            uri, info, cls = m.group(1).strip(), "", ""
+            continue
+        m = re.match(r"\s+(info|make-and-model) = (.*)", line)
+        if m and not info:
+            info = m.group(2).strip()
+        m = re.match(r"\s+class = (.*)", line)
+        if m:
+            cls = m.group(1).strip()
+    return found
+
+
+def port_open(host, port, timeout=3.0):
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def driverless_ok(host):
+    """True if the printer answers IPP Everywhere at ipp://host/ipp/print."""
+    try:
+        r = subprocess.run(["driverless", f"ipp://{host}/ipp/print"], capture_output=True, text=True, timeout=20)
+        return r.returncode == 0 and "*PPD-Adobe" in r.stdout
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--ip")
+    ap.add_argument("--model")
+    ap.add_argument("--no-gui", action="store_true")
+    args = ap.parse_args()
+    gui = have_gui() and not args.no_gui
+
+    uri = model = None
+
+    if args.ip:
+        host, model = args.ip.strip(), args.model or "M08F"
+    else:
+        if gui:
+            zenity("--info", "--title=Network stencil printer", "--width=420", "--timeout=3",
+                   "--text=Make sure the printer is on and joined to the same Wi-Fi as this laptop.\n\nLooking for printers (about 10 seconds)…")
+        found = discover()
+        # Phomemo "WS" units that advertise nothing still answer the name
+        # query on 9100: add whatever the subnet sweep fingerprints.
+        try:
+            sweep = subprocess.run(["stencil-lan-scan", "--no-mdns"], capture_output=True, text=True, timeout=60).stdout
+            for line in sweep.splitlines():
+                parts = line.split(" ", 2)
+                if len(parts) == 3 and parts[1] == "phomemo" and all(parts[0] != u for u, _ in found):
+                    found.append((parts[0], f"Phomemo {parts[2]}"))
+        except Exception:  # noqa: BLE001
+            pass
+        rows = []
+        for u, i in found:
+            rows += [u, i or "(no name)"]
+        rows += ["manual", "Type the printer's IP address instead…"]
+        if gui:
+            rc, pick = zenity("--list", "--title=Network stencil printer", "--width=640", "--height=360",
+                              "--text=Printers found on the network:", "--column=Address", "--column=Name",
+                              "--print-column=1", "--hide-column=1", *rows)
+            if rc != 0 or not pick:
+                return 1
+            pick = pick.strip()
+        else:
+            for n, (u, i) in enumerate(found, 1):
+                print(f"{n}. {i}  {u}")
+            print(f"{len(found) + 1}. type an IP address")
+            sel = input("choice: ").strip()
+            pick = found[int(sel) - 1][0] if sel.isdigit() and int(sel) <= len(found) else "manual"
+        if pick != "manual":
+            uri = pick
+            model = next((i for u, i in found if u == pick), "") or ""
+            host = None
+        else:
+            if gui:
+                rc, host = zenity("--entry", "--title=Network stencil printer",
+                                  "--text=Printer IP address (printed on its network test page or shown in its app):")
+                if rc != 0 or not host.strip():
+                    return 1
+                host = host.strip()
+                rc, model = zenity("--list", "--title=Network stencil printer", "--width=320", "--height=420",
+                                   "--text=Which printer is it?", "--column=Model", *MODELS)
+                if rc != 0:
+                    return 1
+                model = model.strip()
+                if model == "Other":
+                    rc, model = zenity("--entry", "--text=Model name as printed on the printer:")
+                    model = model.strip() if rc == 0 else ""
+            else:
+                host = input("IP address: ").strip()
+                model = input("Model (e.g. M08F, TP88, PJ-773): ").strip()
+
+    if uri is None:
+        if not (port_open(host, 9100) or port_open(host, 631)):
+            say(gui, "error", f"Nothing answers at {host} on the printer ports (9100 or 631).\n\nCheck the address and that the printer is on the same Wi-Fi.")
+            return 1
+        airprint = re.search(r"PJ-?(773|8[0-9]{2})", model or "", re.I) is not None
+        if airprint and port_open(host, 631) and driverless_ok(host):
+            uri = f"ipp://{host}/ipp/print"
+        else:
+            uri = f"socket://{host}:9100"
+
+    r = subprocess.run(["stencil-queue-setup", "--uri", uri, "--model", model or "M08F"], capture_output=True, text=True)
+    if r.returncode != 0:
+        say(gui, "error", f"Found the printer, but setting up the queue failed:\n{(r.stderr or r.stdout)[-400:]}")
+        return 1
+    say(gui, "info", f"{model or uri} is set up as the Stencil printer over the network.\n\n{uri}\n\nPrint the calibration page to check it.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

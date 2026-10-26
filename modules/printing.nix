@@ -19,11 +19,23 @@ in
 {
   services.printing = {
     enable = true;
-    # Local use only. cups-browsed (remote-queue auto-discovery daemon) stays
-    # off: it has a CVE history and the GUI finds network printers without it.
+    # Local use only.
     listenAddresses = [ "localhost:631" ];
     browsing = false;
-    browsed.enable = false;
+    # cups-browsed makes the shop's Wi-Fi printers appear on their own, which
+    # a non-technical user needs. Its 2024 CVE chain needed the legacy UDP
+    # 631 "cups" browse protocol (off here; the firewall drops it anyway) and
+    # the PPD/foomatic bugs fixed in libppd 2.1 / cups-filters 2.0, both of
+    # which this release carries. DNS-SD discovery only.
+    browsed.enable = true;
+    browsedConf = ''
+      BrowseRemoteProtocols dnssd
+      BrowseLocalProtocols none
+      BrowseProtocols none
+      CreateIPPPrinterQueues All
+      CreateRemoteCUPSPrinterQueues No
+      IPPPrinterQueueType Auto
+    '';
     drivers = [
       pkgs.stencil-tools # bluetooth:// backend
       pkgs.brlaser # Brother office lasers

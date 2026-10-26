@@ -14,6 +14,7 @@ upgrade is atomic, and the previous system is always one boot-menu entry away.
 | Print a stencil | Right-click any image/PDF → **Print as Stencil**. Asks for width in inches, prints 1:1 on the `Stencil` queue. |
 | Trust the size | **Stencil Printer Calibration** on the panel prints a ruler page: measure the 4.00 in bar. |
 | No cable | **Add Bluetooth Stencil Printer** pairs a Phomemo/QuYin or Bluetooth PocketJet and makes it the Stencil queue; the vendor filter's status handshake is relayed over the link. |
+| On the shop Wi-Fi | **Add Network Stencil Printer**, or nothing at all: Wi-Fi Phomemo units are found by a subnet sweep, PocketJets by AirPrint, office printers appear on their own. |
 | Printer acting up | **Fix Stencil Printer** in the menu re-detects it (USB first, then paired Bluetooth) and clears stuck state. No password. |
 | Only a thermal copier | **Print as Stencil** offers the office printer and prints at true size on plain paper. |
 | Phone photos | HEIC/WebP/AVIF open everywhere. iPhone by cable (photo roll in the file manager after "Trust"), Android by cable (MTP), or LocalSend over the shop Wi-Fi, no cloud. |

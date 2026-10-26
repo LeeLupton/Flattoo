@@ -22,6 +22,8 @@
   xinput,
   xfconf,
   bluez,
+  avahi,
+  iproute2,
   runCommand,
   poppler-utils,
   cups-filters,
@@ -37,6 +39,7 @@ let
   runtimePath = lib.makeBinPath [
     imagemagick
     cups
+    cups-filters # `driverless` probe
     zenity
     libnotify
     xdg-utils
@@ -50,6 +53,8 @@ let
     xinput
     xfconf
     bluez # bluetoothctl, sdptool
+    avahi # avahi-browse
+    iproute2
   ];
 in
 stdenv.mkDerivation (finalAttrs: {
@@ -68,7 +73,7 @@ stdenv.mkDerivation (finalAttrs: {
 
     cp lib/stencil_common.py $out/lib/flattoo/
 
-    for tool in stencil-print stencil-clean-lines stencil-calibrate stencil-bt-setup; do
+    for tool in stencil-print stencil-clean-lines stencil-calibrate stencil-bt-setup stencil-net-setup stencil-lan-scan; do
       install -m755 bin/$tool $out/bin/$tool
       substituteInPlace $out/bin/$tool \
         --replace-quiet '@libdir@' "$out/lib/flattoo" \
@@ -94,10 +99,14 @@ stdenv.mkDerivation (finalAttrs: {
     runHook postInstall
   '';
 
-  # Offline Phomemo print path through the Bluetooth backend, against a fake
-  # printer that speaks the status protocol decoded from the vendor filter.
-  passthru.tests.phomemoChain =
-    runCommand "stencil-tools-phomemo-chain"
+  # Offline Phomemo print path against a fake printer that speaks the status
+  # protocol decoded from the vendor filter: once over Flattoo's Bluetooth
+  # backend, once over CUPS' own socket backend (the LAN path).
+  passthru.tests.phomemoChain = finalAttrs.passthru.mkChainTest "bluetooth" "${finalAttrs.finalPackage}/lib/cups/backend/bluetooth";
+  passthru.tests.phomemoChainLan = finalAttrs.passthru.mkChainTest "socket" "${cups}/lib/cups/backend/socket";
+  passthru.mkChainTest =
+    mode: backend:
+    runCommand "stencil-tools-phomemo-chain-${mode}"
       {
         nativeBuildInputs = [
           finalAttrs.finalPackage
@@ -112,8 +121,22 @@ stdenv.mkDerivation (finalAttrs: {
           ${cups-filters}/lib/cups/filter/pdftoraster \
           ${phomemo-cups}/lib/cups/filter/rastertoM08F \
           ${phomemo-cups}/share/cups/model/Phomemo/M08F.ppd \
-          ${finalAttrs.finalPackage}/lib/cups/backend/bluetooth \
-          cal.pdf
+          ${backend} \
+          cal.pdf ${mode}
+        touch $out
+      '';
+
+  # LAN discovery: the name-query fingerprint against a fake printer on TCP.
+  passthru.tests.lanScan =
+    runCommand "stencil-tools-lan-scan"
+      {
+        nativeBuildInputs = [
+          finalAttrs.finalPackage
+          py
+        ];
+      }
+      ''
+        python3 ${./tests/lan_scan_test.py} ${finalAttrs.finalPackage}/bin/stencil-lan-scan
         touch $out
       '';
 

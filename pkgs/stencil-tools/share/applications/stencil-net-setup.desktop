@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Add Network Stencil Printer
+Comment=Find a stencil printer on the shop Wi-Fi and make it the Stencil queue
+Exec=stencil-net-setup
+Icon=network-wireless
+Terminal=false
+Categories=Graphics;Printing;Settings;
+Keywords=stencil;printer;wifi;network;lan;
