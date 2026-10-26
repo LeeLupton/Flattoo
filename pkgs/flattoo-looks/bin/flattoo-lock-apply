@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Privileged half of the lock. Called through pkexec.
+#   flattoo-lock-apply --lock BUNDLE_DIR
+#   flattoo-lock-apply --unlock
+#
+# Writes the captured look into the machine's flake copy (/etc/nixos/look),
+# flips flattoo.locked in hosts/<host>/look.nix, commits, and rebuilds.
+set -euo pipefail
+
+REPO="${FLATTOO_REPO:-/etc/nixos}"
+HOST="$(cat /etc/flattoo/host 2>/dev/null || echo shop-laptop)"
+HOSTDIR="$REPO/hosts/$HOST"
+LOOKNIX="$HOSTDIR/look.nix"
+
+[ "$(id -u)" = 0 ] || { echo "must run as root (via pkexec)"; exit 1; }
+[ -f "$REPO/flake.nix" ] || { echo "no flake at $REPO"; exit 1; }
+[ -d "$HOSTDIR" ] || { echo "no host directory $HOSTDIR"; exit 1; }
+
+commit() {
+  # A git history of locks/unlocks and nixpkgs bumps. Everything in the tree
+  # is tracked (a flake built from a git directory only sees tracked files);
+  # the repo's .gitignore keeps passwords.nix out, and users.mutableUsers
+  # keeps the passwords already on disk.
+  cd "$REPO"
+  if [ ! -d .git ]; then git init -q; fi
+  git add -A
+  git -c user.name=flattoo-lock -c user.email=flattoo-lock@localhost commit -q -m "$1" || true
+}
+
+case "${1:-}" in
+  --lock)
+    bundle="${2:-}"
+    [ -d "$bundle" ] && [ -f "$bundle/MANIFEST" ] || { echo "bundle $bundle is not a flattoo-look export"; exit 1; }
+    echo "installing look bundle into $REPO/look"
+    rm -rf "$REPO/look"
+    cp -r "$bundle" "$REPO/look"
+    rm -f "$REPO/look/apply.log"
+    chmod -R u+rwX,go+rX "$REPO/look"
+    cat > "$LOOKNIX" <<EOF
+# Written by flattoo-lock on $(date -Is). The desktop as the artist set it,
+# made permanent, and the stricter mode on. Unlock with flattoo-unlock.
+{
+  flattoo.locked = true;
+  flattoo.look.bundle = ../../look;
+}
+EOF
+    commit "lock: studio look $(date -I)"
+    echo "building locked system"
+    nixos-rebuild switch --flake "$REPO#$HOST" 2>&1 | tail -n 40
+    echo "locked"
+    ;;
+  --unlock)
+    if [ -f "$LOOKNIX" ]; then
+      sed -i 's/flattoo.locked = true;/flattoo.locked = false;/' "$LOOKNIX"
+    else
+      printf '{\n  flattoo.locked = false;\n}\n' > "$LOOKNIX"
+    fi
+    commit "unlock $(date -I)"
+    echo "building unlocked system"
+    nixos-rebuild switch --flake "$REPO#$HOST" 2>&1 | tail -n 40
+    echo "unlocked"
+    ;;
+  *)
+    echo "usage: flattoo-lock-apply --lock BUNDLE_DIR | --unlock"; exit 2 ;;
+esac

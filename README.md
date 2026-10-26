@@ -9,7 +9,10 @@ upgrade is atomic, and the previous system is always one boot-menu entry away.
 
 | Need | What is there |
 |---|---|
-| Draw | Krita (primary), MyPaint, Inkscape for lettering, Xournal++ for tracing. GIMP installed, not on the panel. |
+| Draw | Krita (primary), MyPaint, AzPainter, Rnote, Inkscape for lettering, Xournal++ for tracing. GIMP (with G'MIC) installed, not on the panel. ~40 more a sentence away in Ask Flattoo. |
+| Never a terminal | **Ask Flattoo** (button next to the menu, `Super+Space`): *"something like Microsoft Paint"*, *"update now"*, *"the printer isn't working"*, *"free up space"*. A fixed set of actions and a curated app catalog behind a plain-English front end; one polkit-guarded root helper; no shell. |
+| Make it theirs | **Looks**: six whole-desktop presets (theme, icons, fonts, wallpaper, panel, workspaces, shortcuts), live. **Layouts**: open-and-place window sets. An i3 tiling session at the login screen. Save your own of each. |
+| Then freeze it | **Lock This Setup** bakes the current desktop into the NixOS config: restored at every login, settings kiosk-locked, boot menu hidden, add-ons frozen, GitHub no longer pulled — only weekly nixpkgs security bumps. **Unlock** needs the admin password. |
 | Sketch on paper | Simple Scan, then right-click → **Clean Lines** turns the pencil scan into black stencil lines. |
 | Print a stencil | Right-click any image/PDF → **Print as Stencil**. Asks for width in inches, prints 1:1 on the `Stencil` queue. |
 | Trust the size | **Stencil Printer Calibration** on the panel prints a ruler page: measure the 4.00 in bar. |
@@ -55,16 +58,21 @@ calibration page has an "R" to prove it on your own paper.
 flake.nix                    inputs: nixpkgs 26.05 (release tarball), disko
 hosts/shop-laptop/           the studio laptop: flattoo.* settings, disk layout
 hosts/installer/             installer ISO + the flattoo-install wizard
-modules/                     base, desktop, art, printing, stencil, media,
-                             laptop, security, remote, extras, autoupgrade
+modules/                     base, desktop, art, printing, stencil, media, laptop,
+                             security, remote, extras, autoupgrade (+ flattoo-sync),
+                             looks, locked, copilot
 pkgs/brother-pj/             PocketJet 7 LPR + CUPS wrapper derivations (5 models)
 pkgs/phomemo-cups/           Phomemo/QuYin vendor filters + 75 PPDs
 pkgs/stencil-tools/          stencil-print, stencil-clean-lines, stencil-calibrate,
                              stencil-queue-setup, stencil-fix-printer, stencil-bt-setup,
                              bluetooth:// CUPS backend, flattoo-session,
                              flattoo-tablet-map (+ tests)
+pkgs/flattoo-looks/          flattoo-look, flattoo-layout, i3 config, wallpapers,
+                             flattoo-lock / flattoo-unlock (+ tests)
+pkgs/flattoo-copilot/        flattoo-copilot, flattoo-admin, catalog.json (+ tests)
+tests/look-bundle/           sample captured look for checks.locked-eval
 files/                       XFCE panel/screensaver/power defaults, Thunar actions
-docs/                        install, printers, maintenance
+docs/                        install, printers, maintenance, looks, copilot
 .github/workflows/           weekly lock bump + eval gate; per-push checks
 ```
 
@@ -84,22 +92,30 @@ Full walkthrough: [docs/install.md](docs/install.md).
 ## Maintenance
 
 * Change something: edit, `nix flake check`, push to `main`. The laptop
-  pulls at 03:30 (or after its next boot) and the change is live at the
-  following power-on. Rollback: pick the previous entry in the boot menu.
+  mirrors `main` into `/etc/nixos` at 03:30 (or after its next boot),
+  keeping its own files (hardware, passwords, apps the artist added, a
+  locked look), builds, and the change is live at the following power-on.
+  Rollback: pick the previous entry in the boot menu.
+* The artist: **Ask Flattoo** → *update now* does the same right away;
+  *free up space* removes old generations. [docs/copilot.md](docs/copilot.md).
 * Security updates: `.github/workflows/update-flake-lock.yml` bumps nixpkgs
   weekly and pushes only if everything still evaluates and the stencil
   tools pass their test.
-* In person: `sudo nixos-rebuild switch --flake /etc/nixos#shop-laptop`
-  (`/etc/nixos` is the copy the installer left, with this machine's
-  `hardware-configuration.nix` and the password hashes; neither is in git).
+* In person: `sudo flattoo-sync && sudo nixos-rebuild switch --flake /etc/nixos#shop-laptop`
+  (`/etc/nixos` is the laptop's copy: the repo plus this machine's
+  `hardware-configuration.nix`, password hashes, `apps.nix`, `look.nix`;
+  none of those are in git).
 * Remote: `flattoo.remote.tailscale.enable` / `flattoo.remote.ssh.enable`.
 
 More: [docs/maintenance.md](docs/maintenance.md).
 
 ## Knobs
 
-All in `hosts/shop-laptop/default.nix`, documented in `modules/default.nix`:
-user and admin names, auto-login, lock on suspend, OpenTabletDriver,
-stencil density, Brother/Phomemo drivers, AI extras (Upscayl, Real-ESRGAN,
-rembg — off by default, nothing in the base image), Tailscale, SSH, upgrade
-time, latest kernel.
+All in `hosts/shop-laptop/default.nix`, documented in `modules/default.nix`
+and `modules/copilot.nix`: user and admin names, auto-login, lock on
+suspend, OpenTabletDriver, stencil density, Brother/Phomemo drivers, default
+look, i3 session, AI extras (Upscayl, Real-ESRGAN, rembg — off by default,
+nothing in the base image), copilot LLM provider (`none` / `anthropic` /
+`ollama`; understanding only, never execution), Tailscale, SSH, upgrade
+time, latest kernel. Written on the machine, not in git: `apps.nix` (Ask
+Flattoo) and `look.nix` + `look/` (Lock This Setup).

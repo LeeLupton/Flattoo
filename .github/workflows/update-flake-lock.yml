@@ -38,9 +38,16 @@ jobs:
           nix eval --raw .#nixosConfigurations.shop-laptop.config.system.build.toplevel.drvPath
           nix eval --raw .#nixosConfigurations.installer.config.system.build.isoImage.drvPath
 
-      - name: Build the stencil tools and run their round-trip test
+      - name: Build the stencil tools, looks and copilot and run their tests
         if: env.no_change != '1'
-        run: nix build .#checks.x86_64-linux.stencil-tools --print-build-logs
+        run: |
+          nix build --print-build-logs \
+            .#checks.x86_64-linux.stencil-tools \
+            .#checks.x86_64-linux.phomemo-chain \
+            .#checks.x86_64-linux.looks-presets \
+            .#checks.x86_64-linux.copilot-matcher \
+            .#checks.x86_64-linux.copilot-admin \
+            .#checks.x86_64-linux.copilot-catalog
 
       - name: Build the Brother driver
         if: env.no_change != '1'

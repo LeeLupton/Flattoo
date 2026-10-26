@@ -1,6 +1,7 @@
-# Every push and PR: the laptop config must evaluate and the stencil tools
-# must pass their round-trip test. Cheap (minutes), catches typos before the
-# laptop ever sees them.
+# Every push and PR: the laptop config must evaluate (plain, with artist-added
+# apps, and locked), the stencil tools, looks and copilot must pass their
+# tests, and every catalog entry must be a real package. Cheap (minutes),
+# catches typos before the laptop ever sees them.
 name: check
 
 on:
@@ -19,5 +20,12 @@ jobs:
             experimental-features = nix-command flakes
       - run: nix flake check --no-build
       - run: nix eval --raw .#nixosConfigurations.shop-laptop.config.system.build.toplevel.drvPath
-      - run: nix build .#checks.x86_64-linux.stencil-tools --print-build-logs
+      - run: |
+          nix build --print-build-logs \
+            .#checks.x86_64-linux.stencil-tools \
+            .#checks.x86_64-linux.phomemo-chain \
+            .#checks.x86_64-linux.looks-presets \
+            .#checks.x86_64-linux.copilot-matcher \
+            .#checks.x86_64-linux.copilot-admin \
+            .#checks.x86_64-linux.copilot-catalog
       - run: nix fmt -- --check $(git ls-files '*.nix')

@@ -11,11 +11,18 @@ build stencil-tools + run its test → build the Brother driver → push main
           │
           ▼
 laptop, 03:30 nightly (or after the next boot):
-nixos-rebuild boot --flake github:LeeLupton/Flattoo#shop-laptop --refresh
+flattoo-sync   mirror main into /etc/nixos, keeping hardware-configuration.nix,
+               passwords.nix, apps.nix (Ask Flattoo), look.nix + look/ (the lock)
+nixos-rebuild boot --flake /etc/nixos#shop-laptop
           │
           ▼
 next power-on runs the new generation; the old ones stay in the boot menu
 ```
+
+Locked setup (`/etc/flattoo/locked`): `flattoo-sync` does nothing — the
+repo is frozen on the laptop — and `flattoo-nixpkgs-update` bumps only
+`nixpkgs` in `/etc/nixos/flake.lock` on Mondays, so security fixes still
+arrive. See [looks.md](looks.md).
 
 Properties:
 
@@ -32,8 +39,9 @@ Properties:
 | Task | Command |
 |---|---|
 | Try a change locally before pushing | `nix flake check && nix build .#nixosConfigurations.shop-laptop.config.system.build.toplevel` |
-| Apply right now, in person | `sudo nixos-rebuild switch --flake /etc/nixos#shop-laptop` (after `git -C /etc/nixos pull`) |
-| Apply now from the GitHub copy | `sudo nixos-rebuild switch --flake github:LeeLupton/Flattoo#shop-laptop --refresh` |
+| Apply right now, in person | `sudo flattoo-sync && sudo nixos-rebuild switch --flake /etc/nixos#shop-laptop` |
+| Apply now, as the artist | Ask Flattoo → *update now* |
+| What the artist installed | `cat /etc/nixos/hosts/shop-laptop/apps.nix`, `/var/log/flattoo-admin.log` |
 | See what the nightly job did | `journalctl -u nixos-upgrade -b -1` or `systemctl status nixos-upgrade.timer` |
 | Roll back permanently | `sudo nixos-rebuild switch --rollback` |
 | Which printer queues exist | `lpstat -v` |
@@ -43,14 +51,20 @@ Properties:
 
 ## Adding software
 
-Add the package to the relevant module (`modules/art.nix` for drawing,
-`modules/media.nix` for utilities). Search names at
-<https://search.nixos.org/packages?channel=26.05>. Push.
+For everyone, permanently: add the package to the relevant module
+(`modules/art.nix` for drawing, `modules/media.nix` for utilities). Search
+names at <https://search.nixos.org/packages?channel=26.05>. Push.
+
+For the artist to install themselves: add it to the copilot catalog,
+`pkgs/flattoo-copilot/share/flattoo/catalog.json`, with the words they
+would use for it. See [copilot.md](copilot.md).
 
 ## Changing the artist's defaults
 
-* Panel layout: `files/xfce/panel-default.xml` (only seeds a fresh profile;
-  existing users keep what they changed).
+* Look (theme, panel, wallpaper, workspaces, shortcuts): `flattoo.look.default`
+  picks the preset applied at first login; presets live in
+  `pkgs/flattoo-looks/share/looks/`. `files/xfce/panel-default.xml` is the
+  panel before any look is applied.
 * Right-click actions: `files/thunar/uca.xml`.
 * Screen lock / lid: `flattoo.desktop.lockOnSuspend`, `modules/laptop.nix`.
 

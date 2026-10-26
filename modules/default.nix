@@ -17,6 +17,9 @@ in
     ./security.nix
     ./remote.nix
     ./extras.nix
+    ./looks.nix
+    ./locked.nix
+    ./copilot.nix
   ];
 
   options.flattoo = {
@@ -59,6 +62,41 @@ in
 
     kernel.latest = mkEnableOption "the latest mainline kernel instead of the LTS kernel (brand-new Wi-Fi or audio chipsets only)";
 
+    flakeHost = mkOption {
+      type = types.str;
+      default = "shop-laptop";
+      description = "nixosConfigurations attribute this machine is built from; flattoo-lock rebuilds /etc/nixos#<flakeHost>.";
+    };
+
+    look = {
+      default = mkOption {
+        type = types.str;
+        default = "studio-dark";
+        description = "Look preset applied once at the artist's first login (see flattoo-look list).";
+      };
+      bundle = mkOption {
+        type = types.nullOr types.path;
+        default = null;
+        description = ''
+          A desktop captured by flattoo-lock (flattoo-look export). Its xfconf
+          channels become the system defaults; when flattoo.locked is on it is
+          restored into the artist's config at every login.
+        '';
+      };
+    };
+
+    locked = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        The stricter mode flattoo-lock switches on: the captured look is
+        enforced at login, panel/desktop customization needs the admin
+        password (xfconf kiosk), screen locks on idle, Firefox cannot install
+        add-ons, boot menu hidden, nightly upgrades come from the local
+        /etc/nixos copy (with weekly nixpkgs bumps) instead of GitHub.
+      '';
+    };
+
     desktop = {
       autoLogin = mkOption {
         type = types.bool;
@@ -73,6 +111,11 @@ in
       darkPanel = mkOption {
         type = types.bool;
         default = true;
+      };
+      i3Session = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Offer an 'i3 (Flattoo)' tiling session at the login screen next to XFCE.";
       };
     };
 

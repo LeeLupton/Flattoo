@@ -1,0 +1,414 @@
+#!/usr/bin/env python3
+"""Looks: whole-desktop presets for XFCE, and the capture/restore that the lock uses.
+
+  flattoo-look gui                 pick a look (menu entry "Looks")
+  flattoo-look list
+  flattoo-look apply NAME          theme, icons, cursor, fonts, panel, wallpaper, workspaces, xfwm
+  flattoo-look save NAME           snapshot the current desktop as a user preset
+  flattoo-look export DIR          capture the current desktop config files (for flattoo-lock)
+  flattoo-look restore-files DIR   write a captured bundle into ~/.config before the session starts
+
+Presets are JSON in @presets@ (system) and ~/.config/flattoo/looks (user).
+A preset can be partial: only the keys it has are applied.
+"""
+
+import argparse
+import glob
+import io
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+import xml.etree.ElementTree as ET
+
+PRESETS_DIR = "@presets@"
+WALLPAPER_DIR = "@wallpapers@"
+HOME = os.path.expanduser("~")
+CFG = os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".config"))
+USER_LOOKS = os.path.join(CFG, "flattoo", "looks")
+XFCONF_DIR = os.path.join(CFG, "xfce4", "xfconf", "xfce-perchannel-xml")
+PANEL_DIR = os.path.join(CFG, "xfce4", "panel")
+
+CHANNELS = ["xsettings", "xfwm4", "xfce4-panel", "xfce4-desktop", "xfce4-keyboard-shortcuts",
+            "keyboards", "thunar", "xfce4-screensaver", "xfce4-power-manager", "xfce4-notifyd"]
+
+# Launchers by short name -> desktop id (what the panel launcher stores).
+LAUNCHERS = {
+    "menu": None,
+    "copilot": "flattoo-copilot.desktop",
+    "krita": "org.kde.krita.desktop",
+    "mypaint": "mypaint.desktop",
+    "inkscape": "org.inkscape.Inkscape.desktop",
+    "rnote": "com.github.flxzt.rnote.desktop",
+    "azpainter": "azpainter.desktop",
+    "gimp": "gimp.desktop",
+    "xournalpp": "com.github.xournalpp.xournalpp.desktop",
+    "files": "thunar.desktop",
+    "scan": "simple-scan.desktop",
+    "calibrate": "stencil-calibrate.desktop",
+    "fix-printer": "stencil-fix-printer.desktop",
+    "localsend": "LocalSend.desktop",
+    "firefox": "firefox.desktop",
+    "terminal": "xfce4-terminal.desktop",
+    "looks": "flattoo-look.desktop",
+    "layouts": "flattoo-layout.desktop",
+    "gpick": "gpick.desktop",
+}
+
+
+def run(cmd, **kw):
+    return subprocess.run(cmd, text=True, capture_output=True, **kw)
+
+
+def xq(channel, prop, *args):
+    return run(["xfconf-query", "-c", channel, "-p", prop, *args])
+
+
+def xq_set(channel, prop, typ, value):
+    r = xq(channel, prop, "-n", "-t", typ, "-s", str(value))
+    return r.returncode == 0
+
+
+def xq_set_array(channel, prop, typ, values):
+    args = ["xfconf-query", "-c", channel, "-p", prop, "-n", "-a"]
+    for v in values:
+        args += ["-t", typ, "-s", str(v)]
+    return run(args).returncode == 0
+
+
+def have_display():
+    return bool(os.environ.get("DISPLAY")) and shutil.which("xfconf-query") is not None
+
+
+# ------------------------------------------------------------------ presets
+
+def preset_files():
+    files = {}
+    for d in (PRESETS_DIR, USER_LOOKS):
+        for p in sorted(glob.glob(os.path.join(d, "*.json"))):
+            files[os.path.splitext(os.path.basename(p))[0]] = p
+    return files
+
+
+def load_preset(name):
+    files = preset_files()
+    if name not in files:
+        sys.exit(f"no look named {name!r}; have: {', '.join(files)}")
+    with open(files[name]) as f:
+        return json.load(f)
+
+
+# ------------------------------------------------------------------ panel profile
+
+def panel_profile_tar(panel, out_path):
+    """Build an xfce4-panel-profiles tarball from a panel description.
+
+    panel = {"position": "top"|"bottom", "size": 40, "icon_size": 24, "dark": true,
+             "autohide": false, "launchers": ["menu","krita",...], "clock": "%a %b %-d  %-I:%M %p",
+             "show_labels": true, "length": 100}
+    """
+    pos = {"top": "p=6;x=0;y=0", "bottom": "p=10;x=0;y=0", "left": "p=5;x=0;y=0"}[panel.get("position", "top")]
+    plugins = []  # (type, props dict)
+    launchers = panel.get("launchers", ["menu", "krita", "mypaint", "inkscape", "files", "scan", "calibrate", "localsend", "firefox"])
+    for name in launchers:
+        if name == "menu":
+            plugins.append(("whiskermenu", {}))
+        elif name == "sep":
+            plugins.append(("separator", {"style": ("uint32", 0)}))
+        elif name in LAUNCHERS and LAUNCHERS[name]:
+            plugins.append(("launcher", {"items": ("as", [LAUNCHERS[name]])}))
+        elif name.endswith(".desktop"):
+            plugins.append(("launcher", {"items": ("as", [name])}))
+    plugins.append(("tasklist", {"grouping": ("bool", True), "show-labels": ("bool", panel.get("show_labels", True))}))
+    plugins.append(("separator", {"expand": ("bool", True), "style": ("uint32", 0)}))
+    plugins.append(("systray", {"square-icons": ("bool", True)}))
+    plugins.append(("pulseaudio", {"enable-keyboard-shortcuts": ("bool", True)}))
+    plugins.append(("power-manager-plugin", {}))
+    plugins.append(("clock", {"digital-layout": ("uint32", 3), "digital-time-format": ("s", panel.get("clock", "%a %b %-d  %-I:%M %p"))}))
+    if panel.get("show_desktop", True):
+        plugins.append(("showdesktop", {}))
+
+    props = {
+        "/configver": "2",
+        "/panels": "[<1>]",
+        "/panels/dark-mode": "true" if panel.get("dark", True) else "false",
+        "/panels/panel-1/position": f"'{pos}'",
+        "/panels/panel-1/length": f"uint32 {panel.get('length', 100)}",
+        "/panels/panel-1/position-locked": "true",
+        "/panels/panel-1/icon-size": f"uint32 {panel.get('icon_size', 24)}",
+        "/panels/panel-1/size": f"uint32 {panel.get('size', 40)}",
+        "/panels/panel-1/autohide-behavior": f"uint32 {1 if panel.get('autohide') else 0}",
+        "/panels/panel-1/mode": f"uint32 {1 if panel.get('position') == 'left' else 0}",
+        "/panels/panel-1/plugin-ids": "[" + ", ".join(f"<{i}>" for i in range(1, len(plugins) + 1)) + "]",
+    }
+    desktops = {}
+    for i, (ptype, pprops) in enumerate(plugins, 1):
+        props[f"/plugins/plugin-{i}"] = f"'{ptype}'"
+        for k, (t, v) in pprops.items():
+            if t == "as":
+                props[f"/plugins/plugin-{i}/{k}"] = "[" + ", ".join(f"'{x}'" for x in v) + "]"
+                for d in v:
+                    desktops[f"launcher-{i}/{d}"] = find_desktop_file(d)
+            elif t == "bool":
+                props[f"/plugins/plugin-{i}/{k}"] = "true" if v else "false"
+            elif t == "uint32":
+                props[f"/plugins/plugin-{i}/{k}"] = f"uint32 {v}"
+            elif t == "s":
+                props[f"/plugins/plugin-{i}/{k}"] = "'" + v.replace("'", "\\'") + "'"
+    config = "\n".join(f"{k} {v}" for k, v in sorted(props.items())) + "\n"
+    with tarfile.open(out_path, "w:bz2") as t:
+        def add(name, data):
+            ti = tarfile.TarInfo(name)
+            ti.size = len(data)
+            ti.mtime = int(time.time())
+            t.addfile(ti, io.BytesIO(data))
+        add("config.txt", config.encode())
+        for arc, content in desktops.items():
+            add(arc, content)
+    return props
+
+
+def find_desktop_file(desktop_id):
+    """Contents of a system .desktop file by id; a stub if not installed."""
+    for base in os.environ.get("XDG_DATA_DIRS", "/run/current-system/sw/share:/usr/share").split(":") + [os.path.join(HOME, ".local/share")]:
+        p = os.path.join(base, "applications", desktop_id)
+        if os.path.exists(p):
+            with open(p, "rb") as f:
+                return f.read()
+    name = desktop_id.rsplit(".desktop", 1)[0].split(".")[-1]
+    return f"[Desktop Entry]\nType=Application\nName={name}\nExec={name}\nIcon={name}\n".encode()
+
+
+# ------------------------------------------------------------------ apply (live)
+
+def apply_live(p, quiet=False):
+    if not have_display():
+        sys.exit("apply needs a running XFCE session (DISPLAY and xfconf-query)")
+    say = (lambda *a: None) if quiet else print
+    if "gtk_theme" in p:
+        xq_set("xsettings", "/Net/ThemeName", "string", p["gtk_theme"]); say("theme:", p["gtk_theme"])
+    if "icon_theme" in p:
+        xq_set("xsettings", "/Net/IconThemeName", "string", p["icon_theme"])
+    if "cursor_theme" in p:
+        xq_set("xsettings", "/Gtk/CursorThemeName", "string", p["cursor_theme"])
+        xq_set("xsettings", "/Gtk/CursorThemeSize", "int", p.get("cursor_size", 24))
+    if "font" in p:
+        xq_set("xsettings", "/Gtk/FontName", "string", p["font"])
+    if "dpi" in p:
+        xq_set("xsettings", "/Xft/DPI", "int", p["dpi"])
+    if "xfwm_theme" in p:
+        xq_set("xfwm4", "/general/theme", "string", p["xfwm_theme"])
+    if "title_font" in p:
+        xq_set("xfwm4", "/general/title_font", "string", p["title_font"])
+    for k, v in p.get("xfwm", {}).items():
+        typ = "bool" if isinstance(v, bool) else "int" if isinstance(v, int) else "string"
+        xq_set("xfwm4", f"/general/{k}", typ, str(v).lower() if isinstance(v, bool) else v)
+    ws = p.get("workspaces")
+    if ws:
+        xq_set("xfwm4", "/general/workspace_count", "int", ws.get("count", len(ws.get("names", [])) or 1))
+        if ws.get("names"):
+            xq_set_array("xfwm4", "/general/workspace_names", "string", ws["names"])
+    if "wallpaper" in p:
+        set_wallpaper(resolve_wallpaper(p["wallpaper"]))
+    if "panel" in p:
+        apply_panel(p["panel"])
+    if "keyboard" in p:
+        for combo, cmd in p["keyboard"].items():
+            xq_set("xfce4-keyboard-shortcuts", f"/commands/custom/{combo}", "string", cmd)
+    say("applied", p.get("name", ""))
+
+
+def resolve_wallpaper(name):
+    if os.path.isabs(name):
+        return name
+    for d in (WALLPAPER_DIR, os.path.join(HOME, "Pictures", "Wallpapers")):
+        for ext in ("", ".png", ".jpg"):
+            cand = os.path.join(d, name + ext)
+            if os.path.exists(cand):
+                return cand
+    return name
+
+
+def set_wallpaper(path):
+    out = run(["xfconf-query", "-c", "xfce4-desktop", "-l"]).stdout
+    props = [l.strip() for l in out.splitlines() if l.strip().endswith("/last-image")]
+    if not props:
+        props = ["/backdrop/screen0/monitor0/workspace0/last-image"]
+    for prop in props:
+        xq_set("xfce4-desktop", prop, "string", path)
+        xq_set("xfce4-desktop", prop.replace("last-image", "image-style"), "int", 5)  # zoomed
+
+
+def apply_panel(panel):
+    with tempfile.NamedTemporaryFile(suffix=".tar.bz2", delete=False) as tf:
+        path = tf.name
+    panel_profile_tar(panel, path)
+    if shutil.which("xfce4-panel-profiles"):
+        r = run(["xfce4-panel-profiles", "load", path])
+        if r.returncode != 0:
+            print("panel profile load failed:", r.stderr.strip()[-300:], file=sys.stderr)
+    else:
+        print("xfce4-panel-profiles not installed; panel unchanged", file=sys.stderr)
+    os.unlink(path)
+
+
+# ------------------------------------------------------------------ capture
+
+def capture_dict():
+    """Current look as a preset dict (what `save` writes)."""
+    def get(channel, prop):
+        r = xq(channel, prop)
+        return r.stdout.strip() if r.returncode == 0 else None
+    d = {"name": "custom", "captured": time.strftime("%Y-%m-%d %H:%M")}
+    for key, ch, prop in (("gtk_theme", "xsettings", "/Net/ThemeName"), ("icon_theme", "xsettings", "/Net/IconThemeName"),
+                          ("cursor_theme", "xsettings", "/Gtk/CursorThemeName"), ("font", "xsettings", "/Gtk/FontName"),
+                          ("xfwm_theme", "xfwm4", "/general/theme"), ("title_font", "xfwm4", "/general/title_font")):
+        v = get(ch, prop)
+        if v:
+            d[key] = v
+    dpi = get("xsettings", "/Xft/DPI")
+    if dpi and dpi.lstrip("-").isdigit() and int(dpi) > 0:
+        d["dpi"] = int(dpi)
+    cnt = get("xfwm4", "/general/workspace_count")
+    names = run(["xfconf-query", "-c", "xfwm4", "-p", "/general/workspace_names"]).stdout
+    names = [l.strip() for l in names.splitlines() if l.strip() and not l.startswith("Value is an array")]
+    if cnt and cnt.isdigit():
+        d["workspaces"] = {"count": int(cnt), "names": names[: int(cnt)]}
+    wp = None
+    for l in run(["xfconf-query", "-c", "xfce4-desktop", "-l"]).stdout.splitlines():
+        if l.strip().endswith("/last-image"):
+            wp = get("xfce4-desktop", l.strip())
+            break
+    if wp:
+        d["wallpaper"] = wp
+    return d
+
+
+def export_bundle(dest):
+    """Copy the config files that make up the current desktop into dest/."""
+    os.makedirs(dest, exist_ok=True)
+    copied = []
+    xdest = os.path.join(dest, "xfce-perchannel-xml")
+    os.makedirs(xdest, exist_ok=True)
+    for ch in CHANNELS:
+        src = os.path.join(XFCONF_DIR, ch + ".xml")
+        if os.path.exists(src):
+            shutil.copy2(src, xdest)
+            copied.append(ch + ".xml")
+    if os.path.isdir(PANEL_DIR):
+        shutil.copytree(PANEL_DIR, os.path.join(dest, "panel"), dirs_exist_ok=True)
+        copied.append("panel/")
+    for rel in ("flattoo/layouts", "flattoo/looks", "Thunar/uca.xml", "mimeapps.list", "kritarc", "xfce4/helpers.rc", "xfce4/terminal/terminalrc"):
+        src = os.path.join(CFG, rel)
+        if os.path.isdir(src):
+            shutil.copytree(src, os.path.join(dest, "config", rel), dirs_exist_ok=True); copied.append(rel + "/")
+        elif os.path.exists(src):
+            os.makedirs(os.path.dirname(os.path.join(dest, "config", rel)), exist_ok=True)
+            shutil.copy2(src, os.path.join(dest, "config", rel)); copied.append(rel)
+    with open(os.path.join(dest, "look.json"), "w") as f:
+        json.dump(capture_dict() if have_display() else {"name": "custom"}, f, indent=2)
+    with open(os.path.join(dest, "MANIFEST"), "w") as f:
+        f.write("\n".join(copied) + "\n")
+    return copied
+
+
+def restore_files(src):
+    """Write a bundle into ~/.config. Meant to run before xfconfd starts (sessionCommands)."""
+    xsrc = os.path.join(src, "xfce-perchannel-xml")
+    if os.path.isdir(xsrc):
+        os.makedirs(XFCONF_DIR, exist_ok=True)
+        for p in glob.glob(os.path.join(xsrc, "*.xml")):
+            shutil.copy2(p, XFCONF_DIR)
+    psrc = os.path.join(src, "panel")
+    if os.path.isdir(psrc):
+        if os.path.isdir(PANEL_DIR):
+            shutil.rmtree(PANEL_DIR)
+        shutil.copytree(psrc, PANEL_DIR)
+    csrc = os.path.join(src, "config")
+    if os.path.isdir(csrc):
+        for root, _dirs, files in os.walk(csrc):
+            for fn in files:
+                rel = os.path.relpath(os.path.join(root, fn), csrc)
+                dst = os.path.join(CFG, rel)
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                shutil.copy2(os.path.join(root, fn), dst)
+    return True
+
+
+# ------------------------------------------------------------------ gui
+
+def gui():
+    files = preset_files()
+    rows = []
+    for name, path in files.items():
+        with open(path) as f:
+            p = json.load(f)
+        rows += [name, p.get("title", name), p.get("description", "")]
+    rows += ["__save__", "Save my current look…", "Snapshot the desktop as it is now into a new look"]
+    r = run(["zenity", "--list", "--title=Looks", "--width=640", "--height=420",
+             "--text=Pick a look. Everything changes at once: colors, icons, panel, wallpaper, workspaces.",
+             "--column=id", "--column=Look", "--column=What it is", "--hide-column=1", "--print-column=1", *rows])
+    if r.returncode != 0 or not r.stdout.strip():
+        return 1
+    pick = r.stdout.strip()
+    if pick == "__save__":
+        r = run(["zenity", "--entry", "--title=Save look", "--text=Name for this look:"])
+        if r.returncode != 0 or not r.stdout.strip():
+            return 1
+        name = re.sub(r"[^A-Za-z0-9 _-]", "", r.stdout.strip()).strip().replace(" ", "-").lower()
+        os.makedirs(USER_LOOKS, exist_ok=True)
+        d = capture_dict(); d["name"] = name; d["title"] = r.stdout.strip(); d["description"] = "Saved " + d["captured"]
+        with open(os.path.join(USER_LOOKS, name + ".json"), "w") as f:
+            json.dump(d, f, indent=2)
+        run(["notify-send", "-a", "Flattoo", "Look saved", d["title"]])
+        return 0
+    apply_live(load_preset(pick), quiet=True)
+    run(["notify-send", "-a", "Flattoo", "Look applied", files and pick])
+    return 0
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="flattoo-look", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("gui"); sub.add_parser("list"); sub.add_parser("current")
+    a = sub.add_parser("apply"); a.add_argument("name")
+    s = sub.add_parser("save"); s.add_argument("name")
+    e = sub.add_parser("export"); e.add_argument("dir")
+    r = sub.add_parser("restore-files"); r.add_argument("dir")
+    t = sub.add_parser("panel-tar"); t.add_argument("name"); t.add_argument("out")
+    args = ap.parse_args(argv)
+
+    if args.cmd == "gui":
+        return gui()
+    if args.cmd == "list":
+        for name, path in preset_files().items():
+            with open(path) as f:
+                p = json.load(f)
+            print(f"{name:18s} {p.get('title', '')}  — {p.get('description', '')}")
+        return 0
+    if args.cmd == "current":
+        print(json.dumps(capture_dict(), indent=2)); return 0
+    if args.cmd == "apply":
+        apply_live(load_preset(args.name)); return 0
+    if args.cmd == "save":
+        os.makedirs(USER_LOOKS, exist_ok=True)
+        d = capture_dict(); d["name"] = args.name; d["title"] = args.name
+        with open(os.path.join(USER_LOOKS, args.name + ".json"), "w") as f:
+            json.dump(d, f, indent=2)
+        print("saved", os.path.join(USER_LOOKS, args.name + ".json")); return 0
+    if args.cmd == "export":
+        print("\n".join(export_bundle(args.dir))); return 0
+    if args.cmd == "restore-files":
+        restore_files(args.dir); return 0
+    if args.cmd == "panel-tar":
+        panel_profile_tar(load_preset(args.name).get("panel", {}), args.out); print(args.out); return 0
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# "Lock this setup": capture the desktop as it is now, bake it into the
+# machine's NixOS config, and switch the laptop to its stricter mode.
+# Runs as the artist; the privileged part is flattoo-lock-apply via pkexec
+# (allowed for the flattoo group without a password; unlocking needs the
+# admin password).
+set -uo pipefail
+
+gui() { [ -n "${DISPLAY:-}" ] && command -v zenity >/dev/null; }
+
+if [ -e /etc/flattoo/locked ]; then
+  msg="This laptop is already locked.\n\nTo change the setup: Unlock (needs the admin password), make your changes, then Lock again."
+  if gui; then zenity --info --title="Lock setup" --width=400 --text="$msg"; else printf '%b\n' "$msg"; fi
+  exit 0
+fi
+
+msg="Lock this setup?\n\nEverything as it is right now — colors, panel, workspaces, layouts, printer settings — becomes the laptop's permanent setup, kept even after updates and reinstalls.\n\nAfter locking:\n  • the panel and desktop settings can't be changed without the admin password\n  • the screen locks by itself after 10 minutes\n  • Firefox can't install add-ons\n\nYou can unlock later with the admin password."
+if gui; then
+  zenity --question --title="Lock setup" --width=460 --text="$msg" --ok-label="Lock it" --cancel-label="Not now" || exit 1
+else
+  printf '%b\n' "$msg"; read -rp "Type LOCK to continue: " a; [ "$a" = "LOCK" ] || exit 1
+fi
+
+bundle="${XDG_CACHE_HOME:-$HOME/.cache}/flattoo/lock-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$bundle"
+if ! flattoo-look export "$bundle" >/dev/null; then
+  if gui; then zenity --error --title="Lock setup" --text="Could not capture the current desktop settings."; fi
+  exit 1
+fi
+chmod -R go+rX "$bundle" "$(dirname "$bundle")"
+
+log="$bundle/apply.log"
+if gui; then
+  ( pkexec /run/current-system/sw/bin/flattoo-lock-apply --lock "$bundle" > "$log" 2>&1; echo "rc=$?" >> "$log" ) &
+  pid=$!
+  ( while kill -0 $pid 2>/dev/null; do echo "# Building the locked system… (a few minutes)"; sleep 2; done; echo 100 ) \
+    | zenity --progress --title="Lock setup" --text="Building the locked system…" --pulsate --auto-close --no-cancel --width=420
+  wait $pid
+else
+  pkexec /run/current-system/sw/bin/flattoo-lock-apply --lock "$bundle" | tee "$log"; echo "rc=${PIPESTATUS[0]}" >> "$log"
+fi
+
+if grep -q '^rc=0$' "$log"; then
+  msg="Locked.\n\nRestart the laptop to finish. Everything will come back exactly as it is now."
+  if gui; then
+    zenity --question --title="Lock setup" --width=400 --text="$msg" --ok-label="Restart now" --cancel-label="Later" && systemctl reboot
+  else
+    printf '%b\n' "$msg"
+  fi
+else
+  err="$(grep -v '^rc=' "$log" | tail -n 12)"
+  msg="Locking did not finish.\n\n$err\n\nNothing was changed. The log is at $log."
+  if gui; then zenity --error --title="Lock setup" --width=520 --text="$msg"; else printf '%b\n' "$msg"; fi
+  exit 1
+fi

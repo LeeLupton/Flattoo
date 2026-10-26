@@ -1,0 +1,28 @@
+{
+  "title": "Web Reference + Draw",
+  "description": "Krita left, Firefox right for Pinterest and client messages.",
+  "workspaces": {
+    "count": 2,
+    "names": [
+      "Draw",
+      "Desk"
+    ]
+  },
+  "windows": [
+    {
+      "app": "krita",
+      "class": "krita",
+      "workspace": 0,
+      "place": "left",
+      "width": 62
+    },
+    {
+      "app": "firefox",
+      "class": "firefox",
+      "workspace": 0,
+      "place": "right",
+      "width": 38
+    }
+  ],
+  "name": "web-reference"
+}

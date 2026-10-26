@@ -1,0 +1,796 @@
+[
+  {
+    "pkg": "krita",
+    "name": "Krita",
+    "category": "painting",
+    "tags": [
+      "paint",
+      "painting",
+      "photoshop",
+      "procreate",
+      "clip studio",
+      "draw",
+      "drawing",
+      "digital art",
+      "brushes",
+      "canvas",
+      "sai"
+    ],
+    "blurb": "The main drawing and painting app: pressure, stabilizers, mirror tools, prints at true size. The closest thing to Procreate on a laptop.",
+    "suite": "Krita + G'MIC",
+    "min_ram_gb": 4,
+    "gpu": "any",
+    "heavy": false,
+    "default": true,
+    "desktop": "org.kde.krita.desktop"
+  },
+  {
+    "pkg": "mypaint",
+    "name": "MyPaint",
+    "category": "painting",
+    "tags": [
+      "paint",
+      "sketch",
+      "sketching",
+      "pencil",
+      "infinite canvas",
+      "doodle"
+    ],
+    "blurb": "Pure sketching: an endless canvas and great pencils, nothing in the way.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": true,
+    "desktop": "mypaint.desktop"
+  },
+  {
+    "pkg": "azpainter",
+    "name": "AzPainter",
+    "category": "painting",
+    "tags": [
+      "paint",
+      "ms paint",
+      "microsoft paint",
+      "simple paint",
+      "old laptop",
+      "lightweight",
+      "quick"
+    ],
+    "blurb": "Light and quick painting app with proper pressure support. The nearest to Paint that still works for real art.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": true,
+    "desktop": "azpainter.desktop"
+  },
+  {
+    "pkg": "rnote",
+    "name": "Rnote",
+    "category": "painting",
+    "tags": [
+      "sketch",
+      "notes",
+      "handwriting",
+      "pen",
+      "tablet",
+      "whiteboard"
+    ],
+    "blurb": "Pen-first sketching and notes on an infinite page. Vector strokes stay crisp at any size.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": true,
+    "desktop": "com.github.flxzt.rnote.desktop"
+  },
+  {
+    "pkg": "drawing",
+    "name": "Drawing",
+    "category": "painting",
+    "tags": [
+      "ms paint",
+      "microsoft paint",
+      "paint",
+      "crop",
+      "arrow",
+      "quick edit",
+      "simple"
+    ],
+    "blurb": "The simplest paint program there is: crop, arrows, text, a few brushes. For marking up a photo in ten seconds.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": true,
+    "desktop": "com.github.maoschanz.drawing.desktop"
+  },
+  {
+    "pkg": "pinta",
+    "name": "Pinta",
+    "category": "painting",
+    "tags": [
+      "paint.net",
+      "paint",
+      "ms paint",
+      "layers",
+      "simple editor"
+    ],
+    "blurb": "Paint.NET-style editor: layers, adjustments, effects, easy to pick up.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": false,
+    "desktop": "pinta.desktop"
+  },
+  {
+    "pkg": "lazpaint",
+    "name": "LazPaint",
+    "category": "painting",
+    "tags": [
+      "paint",
+      "layers",
+      "vector and raster",
+      "simple"
+    ],
+    "blurb": "Lightweight image editor with layers, curves and both raster and vector tools.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": false,
+    "desktop": "lazpaint.desktop"
+  },
+  {
+    "pkg": "xournalpp",
+    "name": "Xournal++",
+    "category": "painting",
+    "tags": [
+      "trace",
+      "tracing",
+      "annotate",
+      "pdf",
+      "notes",
+      "handwriting"
+    ],
+    "blurb": "Trace over a scanned sketch or a client photo; annotate PDFs.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": true,
+    "desktop": "com.github.xournalpp.xournalpp.desktop"
+  },
+  {
+    "pkg": "inkscape",
+    "name": "Inkscape",
+    "category": "vector",
+    "tags": [
+      "illustrator",
+      "vector",
+      "lettering",
+      "logo",
+      "svg",
+      "trace",
+      "fonts",
+      "script",
+      "typography",
+      "text on a path",
+      "curved text"
+    ],
+    "blurb": "Vector drawing and lettering. Trace Bitmap turns a scan into clean paths; text on a path for script work.",
+    "suite": "Inkscape + potrace",
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": true,
+    "desktop": "org.inkscape.Inkscape.desktop"
+  },
+  {
+    "pkg": "fontforge-gtk",
+    "name": "FontForge",
+    "category": "vector",
+    "tags": [
+      "font editor",
+      "make a font",
+      "typeface",
+      "glyph"
+    ],
+    "blurb": "Edit or build fonts, for custom lettering alphabets.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": false,
+    "desktop": "org.fontforge.FontForge.desktop"
+  },
+  {
+    "pkg": "gimp-with-plugins",
+    "name": "GIMP",
+    "category": "photo",
+    "tags": [
+      "photoshop",
+      "photo editor",
+      "gimp",
+      "retouch",
+      "levels",
+      "curves",
+      "gmic",
+      "filters"
+    ],
+    "blurb": "Photo editing and G'MIC filters (line art, stencil, engrave, posterize). Installed, off the panel.",
+    "suite": "GIMP + G'MIC",
+    "min_ram_gb": 4,
+    "gpu": "any",
+    "heavy": false,
+    "default": true,
+    "desktop": "gimp.desktop"
+  },
+  {
+    "pkg": "darktable",
+    "name": "darktable",
+    "category": "photo",
+    "tags": [
+      "lightroom",
+      "raw",
+      "photo develop",
+      "camera raw"
+    ],
+    "blurb": "Lightroom-style developing for camera RAW files. Heavy; needs a decent laptop.",
+    "suite": null,
+    "min_ram_gb": 8,
+    "gpu": "recommended",
+    "heavy": true,
+    "default": false,
+    "desktop": "org.darktable.darktable.desktop"
+  },
+  {
+    "pkg": "rawtherapee",
+    "name": "RawTherapee",
+    "category": "photo",
+    "tags": [
+      "lightroom",
+      "raw",
+      "photo develop"
+    ],
+    "blurb": "RAW developing, lighter than darktable.",
+    "suite": null,
+    "min_ram_gb": 4,
+    "gpu": "any",
+    "heavy": false,
+    "default": false,
+    "desktop": "com.rawtherapee.RawTherapee.desktop"
+  },
+  {
+    "pkg": "nomacs",
+    "name": "nomacs",
+    "category": "photo",
+    "tags": [
+      "image viewer",
+      "photo viewer",
+      "compare",
+      "reference"
+    ],
+    "blurb": "Image viewer with side-by-side compare and quick adjustments, for reference photos.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": true,
+    "desktop": "org.nomacs.ImageLounge.desktop"
+  },
+  {
+    "pkg": "shotwell",
+    "name": "Shotwell",
+    "category": "photo",
+    "tags": [
+      "photo library",
+      "gallery",
+      "organize photos",
+      "import photos"
+    ],
+    "blurb": "Photo library: import from phones and cameras, tag, browse by date.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": false,
+    "desktop": "org.gnome.Shotwell.desktop"
+  },
+  {
+    "pkg": "upscayl",
+    "name": "Upscayl",
+    "category": "photo",
+    "tags": [
+      "upscale",
+      "enlarge",
+      "ai upscale",
+      "low resolution",
+      "blurry",
+      "blur",
+      "sharpen",
+      "pixelated",
+      "make it bigger",
+      "photo bigger",
+      "image bigger",
+      "picture bigger"
+    ],
+    "blurb": "Enlarges small or blurry client reference photos with a local AI model. Slow without a GPU.",
+    "suite": null,
+    "min_ram_gb": 8,
+    "gpu": "recommended",
+    "heavy": true,
+    "default": false,
+    "desktop": "upscayl.desktop"
+  },
+  {
+    "pkg": "gpick",
+    "name": "Gpick",
+    "category": "photo",
+    "tags": [
+      "color picker",
+      "colour",
+      "eyedropper",
+      "palette"
+    ],
+    "blurb": "Pick colors off anything on screen and build palettes.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": true,
+    "desktop": "gpick.desktop"
+  },
+  {
+    "pkg": "blender",
+    "name": "Blender",
+    "category": "3d",
+    "tags": [
+      "3d",
+      "blender",
+      "model",
+      "sculpt",
+      "render"
+    ],
+    "blurb": "3D modelling and sculpting. Big download, wants a GPU and 8 GB RAM.",
+    "suite": null,
+    "min_ram_gb": 8,
+    "gpu": "recommended",
+    "heavy": true,
+    "default": false,
+    "desktop": "blender.desktop"
+  },
+  {
+    "pkg": "scribus",
+    "name": "Scribus",
+    "category": "design",
+    "tags": [
+      "indesign",
+      "flyer",
+      "poster",
+      "business card",
+      "print design",
+      "publisher",
+      "page layout"
+    ],
+    "blurb": "Page layout for flyers, cards and posters, with proper print output.",
+    "suite": null,
+    "min_ram_gb": 4,
+    "gpu": "any",
+    "heavy": false,
+    "default": false,
+    "desktop": "scribus.desktop"
+  },
+  {
+    "pkg": "libreoffice-fresh",
+    "name": "LibreOffice",
+    "category": "office",
+    "tags": [
+      "word",
+      "excel",
+      "powerpoint",
+      "office",
+      "spreadsheet",
+      "document",
+      "invoice",
+      "consent form",
+      "docx",
+      "xlsx",
+      "pptx",
+      "writer",
+      "calc"
+    ],
+    "blurb": "Word, Excel and PowerPoint equivalents in one suite. Opens and saves Microsoft formats.",
+    "suite": "LibreOffice",
+    "min_ram_gb": 4,
+    "gpu": "any",
+    "heavy": true,
+    "default": false,
+    "desktop": "startcenter.desktop"
+  },
+  {
+    "pkg": "pdfarranger",
+    "name": "PDF Arranger",
+    "category": "office",
+    "tags": [
+      "pdf",
+      "merge pdf",
+      "split pdf",
+      "rotate pdf",
+      "combine"
+    ],
+    "blurb": "Merge, split, rotate and reorder PDF pages.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": false,
+    "desktop": "com.github.jeromerobert.pdfarranger.desktop"
+  },
+  {
+    "pkg": "gnome-calculator",
+    "name": "Calculator",
+    "category": "office",
+    "tags": [
+      "calculator",
+      "calc",
+      "math"
+    ],
+    "blurb": "A calculator.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": false,
+    "desktop": "org.gnome.Calculator.desktop"
+  },
+  {
+    "pkg": "gnome-calendar",
+    "name": "Calendar",
+    "category": "office",
+    "tags": [
+      "calendar",
+      "appointments",
+      "schedule",
+      "booking"
+    ],
+    "blurb": "A calendar; can sync with Google or iCloud accounts.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": false,
+    "desktop": "org.gnome.Calendar.desktop"
+  },
+  {
+    "pkg": "thunderbird",
+    "name": "Thunderbird",
+    "category": "office",
+    "tags": [
+      "email",
+      "mail",
+      "outlook",
+      "gmail app"
+    ],
+    "blurb": "Email app. Or just use Gmail in Firefox.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": true,
+    "default": false,
+    "desktop": "thunderbird.desktop"
+  },
+  {
+    "pkg": "chromium",
+    "name": "Chromium",
+    "category": "web",
+    "tags": [
+      "chrome",
+      "google chrome",
+      "browser",
+      "second browser"
+    ],
+    "blurb": "Chrome without Google's account hooks. Firefox is already installed and set up.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": true,
+    "default": false,
+    "desktop": "chromium-browser.desktop"
+  },
+  {
+    "pkg": "signal-desktop",
+    "name": "Signal",
+    "category": "comms",
+    "tags": [
+      "signal",
+      "messenger",
+      "texts",
+      "chat"
+    ],
+    "blurb": "Signal messenger on the laptop (pairs with the phone app).",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": true,
+    "default": false,
+    "desktop": "signal.desktop"
+  },
+  {
+    "pkg": "zoom-us",
+    "name": "Zoom",
+    "category": "comms",
+    "tags": [
+      "zoom",
+      "video call",
+      "meeting"
+    ],
+    "blurb": "Zoom client. Video calls also work in Firefox without installing anything.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": true,
+    "default": false,
+    "desktop": "Zoom.desktop"
+  },
+  {
+    "pkg": "vlc",
+    "name": "VLC",
+    "category": "media",
+    "tags": [
+      "video",
+      "play video",
+      "movie",
+      "mp4",
+      "music",
+      "player",
+      "media player"
+    ],
+    "blurb": "Plays any video or audio file a client sends.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": false,
+    "desktop": "vlc.desktop"
+  },
+  {
+    "pkg": "audacity",
+    "name": "Audacity",
+    "category": "media",
+    "tags": [
+      "audio",
+      "record audio",
+      "podcast",
+      "sound"
+    ],
+    "blurb": "Record and edit audio.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": false,
+    "desktop": "audacity.desktop"
+  },
+  {
+    "pkg": "obs-studio",
+    "name": "OBS Studio",
+    "category": "media",
+    "tags": [
+      "record screen",
+      "screen recording",
+      "stream",
+      "time lapse",
+      "timelapse",
+      "process video"
+    ],
+    "blurb": "Record the screen or a camera, for process videos and time-lapses.",
+    "suite": null,
+    "min_ram_gb": 4,
+    "gpu": "any",
+    "heavy": true,
+    "default": false,
+    "desktop": "com.obsproject.Studio.desktop"
+  },
+  {
+    "pkg": "shotcut",
+    "name": "Shotcut",
+    "category": "media",
+    "tags": [
+      "video editor",
+      "edit video",
+      "cut video",
+      "reel",
+      "tiktok",
+      "instagram video"
+    ],
+    "blurb": "Video editor that is easy to start with. For reels and process clips.",
+    "suite": null,
+    "min_ram_gb": 4,
+    "gpu": "any",
+    "heavy": true,
+    "default": false,
+    "desktop": "org.shotcut.Shotcut.desktop"
+  },
+  {
+    "pkg": "kdePackages.kdenlive",
+    "name": "Kdenlive",
+    "category": "media",
+    "tags": [
+      "video editor",
+      "premiere",
+      "edit video",
+      "advanced video"
+    ],
+    "blurb": "Full video editor, more powerful than Shotcut, more to learn.",
+    "suite": null,
+    "min_ram_gb": 8,
+    "gpu": "recommended",
+    "heavy": true,
+    "default": false,
+    "desktop": "org.kde.kdenlive.desktop"
+  },
+  {
+    "pkg": "spotify",
+    "name": "Spotify",
+    "category": "media",
+    "tags": [
+      "spotify",
+      "music streaming"
+    ],
+    "blurb": "Spotify desktop app (the web player also works in Firefox).",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": true,
+    "default": false,
+    "desktop": "spotify.desktop"
+  },
+  {
+    "pkg": "baobab",
+    "name": "Disk Usage Analyzer",
+    "category": "utility",
+    "tags": [
+      "what is taking space",
+      "disk usage",
+      "biggest files",
+      "which folders are big"
+    ],
+    "blurb": "Shows what is using the disk, as a map.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": false,
+    "desktop": "org.gnome.baobab.desktop"
+  },
+  {
+    "pkg": "gnome-disk-utility",
+    "name": "Disks",
+    "category": "utility",
+    "tags": [
+      "usb stick",
+      "format a drive",
+      "format usb",
+      "sd card",
+      "external drive",
+      "drive health"
+    ],
+    "blurb": "Format USB sticks and SD cards, check drive health.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": false,
+    "desktop": "org.gnome.DiskUtility.desktop"
+  },
+  {
+    "pkg": "font-manager",
+    "name": "Font Manager",
+    "category": "utility",
+    "tags": [
+      "fonts",
+      "install font",
+      "lettering fonts",
+      "script font"
+    ],
+    "blurb": "Install and preview fonts. Double-clicking a font file also works.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": true,
+    "desktop": "org.gnome.FontManager.desktop"
+  },
+  {
+    "pkg": "localsend",
+    "name": "LocalSend",
+    "category": "utility",
+    "tags": [
+      "send from phone",
+      "from my phone",
+      "phone",
+      "photos from phone",
+      "airdrop",
+      "phone transfer",
+      "share files",
+      "send to phone"
+    ],
+    "blurb": "Phone to laptop file transfer over Wi-Fi, no cloud.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": true,
+    "desktop": "LocalSend.desktop"
+  },
+  {
+    "pkg": "simple-scan",
+    "name": "Document Scanner",
+    "category": "utility",
+    "tags": [
+      "scan",
+      "scanner",
+      "scanning"
+    ],
+    "blurb": "Scans sketches and documents.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": true,
+    "desktop": "simple-scan.desktop"
+  },
+  {
+    "pkg": "keepassxc",
+    "name": "KeePassXC",
+    "category": "utility",
+    "tags": [
+      "passwords",
+      "password manager"
+    ],
+    "blurb": "Password manager, stored on this laptop.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": false,
+    "desktop": "org.keepassxc.KeePassXC.desktop"
+  },
+  {
+    "pkg": "qalculate-gtk",
+    "name": "Qalculate",
+    "category": "utility",
+    "tags": [
+      "unit conversion",
+      "convert inches",
+      "cm to inches"
+    ],
+    "blurb": "Calculator that converts units: inches, cm, points.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": false,
+    "desktop": "qalculate-gtk.desktop"
+  },
+  {
+    "pkg": "flameshot",
+    "name": "Flameshot",
+    "category": "utility",
+    "tags": [
+      "screenshot",
+      "screen capture",
+      "snip"
+    ],
+    "blurb": "Screenshots with arrows and blur before sending.",
+    "suite": null,
+    "min_ram_gb": 2,
+    "gpu": "any",
+    "heavy": false,
+    "default": false,
+    "desktop": "org.flameshot.Flameshot.desktop"
+  }
+]

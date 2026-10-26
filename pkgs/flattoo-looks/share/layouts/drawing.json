@@ -1,0 +1,19 @@
+{
+  "title": "Drawing",
+  "description": "Krita, full screen, nothing else. One workspace.",
+  "workspaces": {
+    "count": 1,
+    "names": [
+      "Draw"
+    ]
+  },
+  "windows": [
+    {
+      "app": "krita",
+      "class": "krita",
+      "workspace": 0,
+      "place": "max"
+    }
+  ],
+  "name": "drawing"
+}

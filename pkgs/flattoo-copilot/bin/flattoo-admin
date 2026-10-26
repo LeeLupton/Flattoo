@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# The copilot's only privileged helper. Reached through pkexec (polkit action
+# org.flattoo.admin). Four subcommands, nothing free-form:
+#
+#   flattoo-admin install PKG...   add catalog packages to hosts/<host>/apps.nix and rebuild
+#   flattoo-admin remove PKG...    remove them and rebuild
+#   flattoo-admin update           rebuild from the current source (GitHub or the local copy when locked)
+#   flattoo-admin cleanup          delete system generations older than 14 days, collect garbage
+#
+# PKG must be in the catalog; the NixOS module refuses anything else at
+# evaluation time as well, so a bad name cannot reach the system.
+set -euo pipefail
+
+REPO="${FLATTOO_REPO:-/etc/nixos}"
+HOST="$(cat /etc/flattoo/host 2>/dev/null || echo shop-laptop)"
+APPS="$REPO/hosts/$HOST/apps.nix"
+CATALOG="@catalog@"
+LOG=/var/log/flattoo-admin.log
+
+[ "$(id -u)" = 0 ] || { echo "must run as root (via pkexec)"; exit 1; }
+exec > >(tee -a "$LOG") 2>&1
+echo "== $(date -Is) $*"
+
+in_catalog() { python3 -I -c 'import json,sys; sys.exit(0 if sys.argv[2] in {e["pkg"] for e in json.load(open(sys.argv[1]))} else 1)' "$CATALOG" "$1"; }
+
+current() { # the packages apps.nix lists now (may be none)
+  [ -f "$APPS" ] || return 0
+  { tr '\n' ' ' < "$APPS" | sed -n 's/.*extra *= *\[\([^]]*\)\].*/\1/p' | grep -oE '"[^"]+"' || true; } | tr -d '"' | tr '\n' ' '
+}
+
+write_apps() { # write_apps PKG...
+  {
+    echo "# Managed by Ask Flattoo (flattoo-admin). Catalog packages only."
+    echo "{"
+    printf '  flattoo.apps.extra = [\n'
+    for p in "$@"; do printf '    "%s"\n' "$p"; done
+    printf '  ];\n}\n'
+  } > "$APPS"
+  if [ -d "$REPO/.git" ]; then
+    git -C "$REPO" add -A
+    git -C "$REPO" -c user.name=flattoo-admin -c user.email=flattoo-admin@localhost commit -q -m "apps: ${*:-(none)}" || true
+  fi
+}
+
+rebuild() {
+  # Same path the nightly upgrade takes: refresh /etc/nixos from GitHub
+  # (keeps this machine's own files), then build the local copy.
+  if [ -x /run/current-system/sw/bin/flattoo-sync ]; then
+    /run/current-system/sw/bin/flattoo-sync || echo "sync skipped (offline?) — building what is here"
+  fi
+  nixos-rebuild switch --flake "$REPO#$HOST" 2>&1 | tail -n 30
+}
+
+case "${1:-}" in
+  install)
+    shift; [ $# -ge 1 ] || { echo "install: package name required"; exit 2; }
+    for p in "$@"; do in_catalog "$p" || { echo "refused: $p is not in the catalog"; exit 3; }; done
+    # shellcheck disable=SC2207
+    want=($(current) "$@")
+    # shellcheck disable=SC2207
+    uniq=($(printf '%s\n' "${want[@]}" | awk 'NF && !seen[$0]++'))
+    write_apps "${uniq[@]}"
+    nixos-rebuild switch --flake "$REPO#$HOST" 2>&1 | tail -n 30 ;;
+  remove)
+    shift; [ $# -ge 1 ] || { echo "remove: package name required"; exit 2; }
+    keep=()
+    for p in $(current); do skip=0; for r in "$@"; do [ "$p" = "$r" ] && skip=1; done; [ "$skip" = 0 ] && keep+=("$p"); done
+    write_apps "${keep[@]}"
+    nixos-rebuild switch --flake "$REPO#$HOST" 2>&1 | tail -n 30 ;;
+  update)
+    rebuild ;;
+  cleanup)
+    nix-collect-garbage --delete-older-than 14d 2>&1 | tail -n 5
+    nix-store --optimise 2>&1 | tail -n 2
+    /run/current-system/bin/switch-to-configuration boot >/dev/null 2>&1 || true ;;
+  *)
+    echo "usage: flattoo-admin install PKG... | remove PKG... | update | cleanup"; exit 2 ;;
+esac
+echo "ok"

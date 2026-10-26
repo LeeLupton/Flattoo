@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Layouts
+Comment=Open the apps you need where you need them, or save what is open now
+Icon=preferences-system-windows
+Exec=flattoo-layout gui
+Terminal=false
+Categories=Settings;Utility;
+Keywords=flattoo;look;theme;layout;workspace;lock;

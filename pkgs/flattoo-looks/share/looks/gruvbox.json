@@ -1,0 +1,54 @@
+{
+  "title": "Gruvbox",
+  "description": "Warm retro palette, panel on the left edge to keep the canvas wide.",
+  "gtk_theme": "Gruvbox-Dark",
+  "xfwm_theme": "Gruvbox-Dark",
+  "icon_theme": "Tela-dark",
+  "cursor_theme": "Bibata-Modern-Classic",
+  "cursor_size": 24,
+  "font": "Inter 11",
+  "title_font": "Inter Bold 11",
+  "wallpaper": "ember",
+  "workspaces": {
+    "count": 3,
+    "names": [
+      "Draw",
+      "Reference",
+      "Desk"
+    ]
+  },
+  "panel": {
+    "position": "left",
+    "size": 44,
+    "icon_size": 26,
+    "dark": true,
+    "show_labels": false,
+    "launchers": [
+      "menu",
+      "copilot",
+      "krita",
+      "mypaint",
+      "inkscape",
+      "rnote",
+      "sep",
+      "files",
+      "scan",
+      "calibrate",
+      "firefox"
+    ]
+  },
+  "xfwm": {
+    "tile_on_move": true,
+    "snap_to_border": true,
+    "button_layout": "O|HMC"
+  },
+  "keyboard": {
+    "<Super>Return": "xfce4-terminal",
+    "<Super>e": "thunar",
+    "<Super>k": "krita",
+    "<Super>l": "flattoo-layout gui",
+    "<Super>p": "stencil-print --gui",
+    "<Super>space": "flattoo-copilot"
+  },
+  "name": "gruvbox"
+}

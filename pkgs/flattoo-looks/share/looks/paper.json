@@ -1,0 +1,52 @@
+{
+  "title": "Paper",
+  "description": "Light, warm, quiet. Looks like the sketchbook. Panel on top.",
+  "gtk_theme": "Materia-light",
+  "xfwm_theme": "Materia-light",
+  "icon_theme": "Papirus-Light",
+  "cursor_theme": "capitaine-cursors",
+  "cursor_size": 24,
+  "font": "Inter 11",
+  "title_font": "Inter Bold 11",
+  "wallpaper": "paper",
+  "workspaces": {
+    "count": 2,
+    "names": [
+      "Draw",
+      "Desk"
+    ]
+  },
+  "panel": {
+    "position": "top",
+    "size": 40,
+    "icon_size": 24,
+    "dark": false,
+    "launchers": [
+      "menu",
+      "copilot",
+      "krita",
+      "mypaint",
+      "inkscape",
+      "sep",
+      "files",
+      "scan",
+      "calibrate",
+      "localsend",
+      "firefox"
+    ]
+  },
+  "xfwm": {
+    "tile_on_move": true,
+    "snap_to_border": true,
+    "button_layout": "O|HMC"
+  },
+  "keyboard": {
+    "<Super>Return": "xfce4-terminal",
+    "<Super>e": "thunar",
+    "<Super>k": "krita",
+    "<Super>l": "flattoo-layout gui",
+    "<Super>p": "stencil-print --gui",
+    "<Super>space": "flattoo-copilot"
+  },
+  "name": "paper"
+}

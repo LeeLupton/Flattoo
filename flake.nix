@@ -63,6 +63,8 @@
       packages.${system} = {
         inherit (pkgs)
           stencil-tools
+          flattoo-looks
+          flattoo-copilot
           phomemo-cups
           brother-pj723-lpr
           brother-pj723-cupswrapper
@@ -83,9 +85,53 @@
         phomemo-chain = pkgs.stencil-tools.tests.phomemoChain;
         phomemo-chain-lan = pkgs.stencil-tools.tests.phomemoChainLan;
         lan-scan = pkgs.stencil-tools.tests.lanScan;
+        looks-presets = pkgs.flattoo-looks.tests.presets;
+        looks-i3config = pkgs.flattoo-looks.tests.i3config;
+        copilot-matcher = pkgs.flattoo-copilot.tests.matcher;
+        copilot-admin = pkgs.flattoo-copilot.tests.admin;
+        # Every catalog entry must name a real package in the pinned nixpkgs.
+        copilot-catalog = pkgs.runCommand "flattoo-copilot-catalog" {
+          names = map (
+            e:
+            (pkgs.lib.attrByPath (pkgs.lib.splitString "." e.pkg) (throw "catalog: ${e.pkg} is not in nixpkgs")
+              pkgs
+            ).name
+          ) (builtins.fromJSON (builtins.readFile ./pkgs/flattoo-copilot/share/flattoo/catalog.json));
+        } "echo $names > $out";
         brother-pj = self.packages.${system}.brother-pj;
         phomemo-cups = pkgs.phomemo-cups;
         shop-laptop-eval = self.nixosConfigurations.shop-laptop.config.system.build.toplevel;
+        # The laptop with apps the artist added through Ask Flattoo, and the
+        # module's refusal of anything outside the catalog.
+        copilot-apps-eval =
+          let
+            withApps = mkHost [
+              ./hosts/shop-laptop
+              {
+                flattoo.apps.extra = [
+                  "pinta"
+                  "blender"
+                  "kdePackages.kdenlive"
+                ];
+              }
+            ];
+            bad = mkHost [
+              ./hosts/shop-laptop
+              { flattoo.apps.extra = [ "nmap" ]; }
+            ];
+            rejected = lib.any (a: !a.assertion) bad.config.assertions;
+          in
+          assert rejected;
+          withApps.config.system.build.toplevel;
+        # The laptop after "Lock This Setup": captured bundle + locked mode.
+        locked-eval =
+          (mkHost [
+            ./hosts/shop-laptop
+            {
+              flattoo.locked = true;
+              flattoo.look.bundle = ./tests/look-bundle;
+            }
+          ]).config.system.build.toplevel;
       };
 
       formatter.${system} = pkgs.nixfmt;

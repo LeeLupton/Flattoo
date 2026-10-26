@@ -39,4 +39,12 @@ in
   # stencil-print, stencil-clean-lines, stencil-calibrate, stencil-queue-setup,
   # flattoo-session, flattoo-tablet-map
   stencil-tools = prev.callPackage ./stencil-tools { };
+
+  # flattoo-look, flattoo-layout, i3 session config, wallpapers, flattoo-lock
+  flattoo-looks = prev.callPackage ./flattoo-looks { };
+
+  # Ask Flattoo: flattoo-copilot (artist), flattoo-admin (root via polkit), catalog
+  flattoo-copilot = prev.callPackage ./flattoo-copilot {
+    inherit (final) flattoo-looks stencil-tools;
+  };
 }

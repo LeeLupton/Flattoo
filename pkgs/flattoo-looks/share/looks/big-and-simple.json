@@ -1,0 +1,48 @@
+{
+  "title": "Big & Simple",
+  "description": "Large text, large icons, dock-style bottom panel with the four things that matter. For a 4K screen or tired eyes.",
+  "gtk_theme": "Arc-Dark",
+  "xfwm_theme": "Arc-Dark",
+  "icon_theme": "Papirus-Dark",
+  "cursor_theme": "Bibata-Modern-Classic",
+  "cursor_size": 32,
+  "font": "Inter 13",
+  "title_font": "Inter Bold 13",
+  "dpi": 120,
+  "wallpaper": "slate",
+  "workspaces": {
+    "count": 1,
+    "names": [
+      "Draw"
+    ]
+  },
+  "panel": {
+    "position": "bottom",
+    "size": 56,
+    "icon_size": 40,
+    "dark": true,
+    "show_labels": false,
+    "launchers": [
+      "menu",
+      "copilot",
+      "krita",
+      "scan",
+      "calibrate",
+      "firefox"
+    ]
+  },
+  "xfwm": {
+    "tile_on_move": true,
+    "snap_to_border": true,
+    "button_layout": "O|HMC"
+  },
+  "keyboard": {
+    "<Super>Return": "xfce4-terminal",
+    "<Super>e": "thunar",
+    "<Super>k": "krita",
+    "<Super>l": "flattoo-layout gui",
+    "<Super>p": "stencil-print --gui",
+    "<Super>space": "flattoo-copilot"
+  },
+  "name": "big-and-simple"
+}

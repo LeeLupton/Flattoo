@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+"""Window layouts: open the right apps on the right workspaces at the right size.
+
+  flattoo-layout gui              pick a layout (menu entry "Layouts")
+  flattoo-layout list
+  flattoo-layout apply NAME
+  flattoo-layout save NAME        snapshot the open windows as a new layout
+
+A layout is JSON:
+  {"title": "Reference + Draw", "description": "...",
+   "workspaces": {"count": 2, "names": ["Draw", "Desk"]},
+   "windows": [
+     {"app": "krita",   "class": "krita",   "workspace": 0, "place": "left",  "width": 65},
+     {"app": "firefox", "class": "firefox", "workspace": 0, "place": "right", "width": 35},
+     {"app": "thunar",  "class": "thunar",  "workspace": 1, "place": "max"}
+   ]}
+place: max | left | right | top | bottom | full (no decoration change) | "x,y,w,h" in percent.
+Presets live in @presets@ and ~/.config/flattoo/layouts.
+"""
+
+import argparse
+import glob
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+import time
+
+PRESETS_DIR = "@presets@"
+HOME = os.path.expanduser("~")
+USER_DIR = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".config")), "flattoo", "layouts")
+WAIT = 25
+
+
+def run(cmd, **kw):
+    return subprocess.run(cmd, text=True, capture_output=True, **kw)
+
+
+def presets():
+    files = {}
+    for d in (PRESETS_DIR, USER_DIR):
+        for p in sorted(glob.glob(os.path.join(d, "*.json"))):
+            files[os.path.splitext(os.path.basename(p))[0]] = p
+    return files
+
+
+def load(name):
+    f = presets().get(name)
+    if not f:
+        sys.exit(f"no layout {name!r}; have: {', '.join(presets())}")
+    with open(f) as fh:
+        return json.load(fh)
+
+
+# ------------------------------------------------------------------ X helpers
+
+def screen_size():
+    out = run(["xdotool", "getdisplaygeometry"]).stdout.split()
+    return (int(out[0]), int(out[1])) if len(out) == 2 else (1920, 1080)
+
+
+def work_area():
+    """Usable area (minus panels) from _NET_WORKAREA."""
+    out = run(["xprop", "-root", "_NET_WORKAREA"]).stdout
+    m = re.search(r"=\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)", out)
+    if m:
+        return tuple(int(x) for x in m.groups())
+    w, h = screen_size()
+    return (0, 0, w, h)
+
+
+def windows():
+    """[(wid, desktop, pid, wm_class, title)] from wmctrl -lxp."""
+    out = run(["wmctrl", "-lxp"]).stdout
+    res = []
+    for line in out.splitlines():
+        parts = line.split(None, 5)
+        if len(parts) < 5:
+            continue
+        wid, desk, pid, cls = parts[0], int(parts[1]), int(parts[2]), parts[3]
+        title = parts[5] if len(parts) > 5 else ""
+        res.append((wid, desk, pid, cls.lower(), title))
+    return res
+
+
+def geometry(wid):
+    out = run(["xdotool", "getwindowgeometry", "--shell", wid]).stdout
+    g = dict(l.split("=") for l in out.splitlines() if "=" in l)
+    return int(g.get("X", 0)), int(g.get("Y", 0)), int(g.get("WIDTH", 0)), int(g.get("HEIGHT", 0))
+
+
+def find_window(cls, exclude=()):
+    for wid, desk, pid, wcls, title in windows():
+        if cls.lower() in wcls and wid not in exclude:
+            return wid
+    return None
+
+
+def set_workspaces(ws):
+    if not ws:
+        return
+    n = ws.get("count") or len(ws.get("names", [])) or 1
+    run(["xfconf-query", "-c", "xfwm4", "-p", "/general/workspace_count", "-n", "-t", "int", "-s", str(n)])
+    if ws.get("names"):
+        args = ["xfconf-query", "-c", "xfwm4", "-p", "/general/workspace_names", "-n", "-a"]
+        for name in ws["names"]:
+            args += ["-t", "string", "-s", name]
+        run(args)
+
+
+def place(wid, spec, width_pct=None):
+    x0, y0, W, H = work_area()
+    run(["wmctrl", "-i", "-r", wid, "-b", "remove,maximized_vert,maximized_horz,fullscreen"])
+    if spec == "max":
+        run(["wmctrl", "-i", "-r", wid, "-b", "add,maximized_vert,maximized_horz"])
+        return
+    if spec == "full":
+        run(["wmctrl", "-i", "-r", wid, "-b", "add,fullscreen"])
+        return
+    w = width_pct or 50
+    rects = {
+        "left": (x0, y0, W * w // 100, H),
+        "right": (x0 + W - W * w // 100, y0, W * w // 100, H),
+        "top": (x0, y0, W, H * w // 100),
+        "bottom": (x0, y0 + H - H * w // 100, W, H * w // 100),
+    }
+    if spec in rects:
+        x, y, ww, hh = rects[spec]
+    else:
+        try:
+            px, py, pw, ph = (float(v) for v in spec.split(","))
+        except ValueError:
+            return
+        x, y, ww, hh = x0 + int(W * px / 100), y0 + int(H * py / 100), int(W * pw / 100), int(H * ph / 100)
+    run(["wmctrl", "-i", "-r", wid, "-e", f"0,{x},{y},{ww},{hh}"])
+
+
+def apply(layout, notify=False):
+    if not os.environ.get("DISPLAY"):
+        sys.exit("apply needs a running X session")
+    set_workspaces(layout.get("workspaces"))
+    used = set()
+    for w in layout.get("windows", []):
+        cls = w.get("class") or w["app"]
+        wid = find_window(cls, exclude=used)
+        if not wid:
+            cmd = shlex.split(w.get("exec") or w["app"])
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            t0 = time.time()
+            while time.time() - t0 < WAIT and not wid:
+                time.sleep(0.4)
+                wid = find_window(cls, exclude=used)
+        if not wid:
+            print(f"no window for {cls} after {WAIT}s", file=sys.stderr)
+            continue
+        used.add(wid)
+        run(["wmctrl", "-i", "-r", wid, "-t", str(w.get("workspace", 0))])
+        time.sleep(0.2)
+        place(wid, w.get("place", "max"), w.get("width"))
+    run(["wmctrl", "-s", str(layout.get("focus_workspace", 0))])
+    if notify:
+        run(["notify-send", "-a", "Flattoo", "Layout applied", layout.get("title", "")])
+
+
+def save(name, title=None):
+    x0, y0, W, H = work_area()
+    wins = []
+    for wid, desk, pid, cls, t in windows():
+        if desk < 0 or "xfce4-panel" in cls or "xfdesktop" in cls or "zenity" in cls:
+            continue
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                cmd = f.read().split(b"\0")[0].decode(errors="replace")
+        except OSError:
+            cmd = cls.split(".")[-1]
+        x, y, w, h = geometry(wid)
+        state = run(["xprop", "-id", wid, "_NET_WM_STATE"]).stdout
+        if "MAXIMIZED_HORZ" in state and "MAXIMIZED_VERT" in state:
+            spec = "max"
+        elif "FULLSCREEN" in state:
+            spec = "full"
+        else:
+            spec = f"{(x - x0) * 100 // max(W, 1)},{(y - y0) * 100 // max(H, 1)},{w * 100 // max(W, 1)},{h * 100 // max(H, 1)}"
+        wins.append({"app": os.path.basename(cmd), "class": cls.split(".")[-1], "workspace": desk, "place": spec})
+    names = [l.strip() for l in run(["xfconf-query", "-c", "xfwm4", "-p", "/general/workspace_names"]).stdout.splitlines()
+             if l.strip() and not l.startswith("Value is")]
+    cnt = run(["xfconf-query", "-c", "xfwm4", "-p", "/general/workspace_count"]).stdout.strip()
+    layout = {"name": name, "title": title or name, "description": "Saved " + time.strftime("%Y-%m-%d %H:%M"),
+              "workspaces": {"count": int(cnt) if cnt.isdigit() else max(1, len(names)), "names": names},
+              "windows": wins}
+    os.makedirs(USER_DIR, exist_ok=True)
+    path = os.path.join(USER_DIR, name + ".json")
+    with open(path, "w") as f:
+        json.dump(layout, f, indent=2)
+    return path
+
+
+def gui():
+    rows = []
+    for name, path in presets().items():
+        with open(path) as f:
+            p = json.load(f)
+        rows += [name, p.get("title", name), p.get("description", "")]
+    rows += ["__save__", "Save what is open now…", "Snapshot the open windows and workspaces as a new layout"]
+    r = run(["zenity", "--list", "--title=Layouts", "--width=640", "--height=400",
+             "--text=Open the apps you need, where you need them.",
+             "--column=id", "--column=Layout", "--column=What it does", "--hide-column=1", "--print-column=1", *rows])
+    if r.returncode != 0 or not r.stdout.strip():
+        return 1
+    pick = r.stdout.strip()
+    if pick == "__save__":
+        r = run(["zenity", "--entry", "--title=Save layout", "--text=Name for this layout:"])
+        if r.returncode != 0 or not r.stdout.strip():
+            return 1
+        title = r.stdout.strip()
+        name = re.sub(r"[^A-Za-z0-9 _-]", "", title).strip().replace(" ", "-").lower() or "layout"
+        save(name, title)
+        run(["notify-send", "-a", "Flattoo", "Layout saved", title])
+        return 0
+    apply(load(pick), notify=True)
+    return 0
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="flattoo-layout", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("gui"); sub.add_parser("list")
+    a = sub.add_parser("apply"); a.add_argument("name")
+    s = sub.add_parser("save"); s.add_argument("name")
+    v = sub.add_parser("validate"); v.add_argument("file")
+    args = ap.parse_args(argv)
+    if args.cmd == "gui":
+        return gui()
+    if args.cmd == "list":
+        for name, path in presets().items():
+            with open(path) as f:
+                p = json.load(f)
+            print(f"{name:18s} {p.get('title', '')}  — {p.get('description', '')}")
+        return 0
+    if args.cmd == "apply":
+        apply(load(args.name)); return 0
+    if args.cmd == "save":
+        print(save(args.name)); return 0
+    if args.cmd == "validate":
+        with open(args.file) as f:
+            p = json.load(f)
+        assert isinstance(p.get("windows"), list) and p["windows"], "windows list required"
+        for w in p["windows"]:
+            assert "app" in w, f"window needs app: {w}"
+            spec = w.get("place", "max")
+            assert spec in ("max", "full", "left", "right", "top", "bottom") or re.fullmatch(r"[\d.]+,[\d.]+,[\d.]+,[\d.]+", spec), f"bad place {spec!r}"
+        print("ok", args.file); return 0
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

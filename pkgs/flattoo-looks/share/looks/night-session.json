@@ -1,0 +1,53 @@
+{
+  "title": "Night Session",
+  "description": "Near-black, panel hides until the mouse touches the bottom edge. Nothing but the canvas.",
+  "gtk_theme": "Dracula",
+  "xfwm_theme": "Dracula",
+  "icon_theme": "Papirus-Dark",
+  "cursor_theme": "Bibata-Modern-Ice",
+  "cursor_size": 24,
+  "font": "Inter 11",
+  "title_font": "Inter Bold 11",
+  "wallpaper": "ink",
+  "workspaces": {
+    "count": 1,
+    "names": [
+      "Draw"
+    ]
+  },
+  "panel": {
+    "position": "bottom",
+    "size": 44,
+    "icon_size": 28,
+    "dark": true,
+    "autohide": true,
+    "show_labels": false,
+    "launchers": [
+      "menu",
+      "copilot",
+      "krita",
+      "mypaint",
+      "inkscape",
+      "rnote",
+      "sep",
+      "files",
+      "calibrate",
+      "firefox"
+    ]
+  },
+  "xfwm": {
+    "tile_on_move": true,
+    "snap_to_border": true,
+    "button_layout": "O|HMC",
+    "cycle_minimum": false
+  },
+  "keyboard": {
+    "<Super>Return": "xfce4-terminal",
+    "<Super>e": "thunar",
+    "<Super>k": "krita",
+    "<Super>l": "flattoo-layout gui",
+    "<Super>p": "stencil-print --gui",
+    "<Super>space": "flattoo-copilot"
+  },
+  "name": "night-session"
+}
