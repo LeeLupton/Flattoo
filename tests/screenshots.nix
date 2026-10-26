@@ -139,10 +139,10 @@ pkgs.testers.runNixOSTest {
     { ... }:
     {
       imports = [ common ];
-      # Read the closure from a disk image instead of 9p: several times faster
-      # under TCG. The image is built when the VM starts (about the closure's
-      # size on disk, deleted with the sandbox).
-      virtualisation.useNixStoreImage = true;
+      # virtualisation.useNixStoreImage = true would read the closure from a
+      # disk image instead of 9p (several times faster under TCG) but needs
+      # the closure's size again as scratch space while the VM runs; 9p is
+      # slow but needs nothing.
     };
 
   nodes.tiling =
