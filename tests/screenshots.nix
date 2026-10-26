@@ -119,7 +119,7 @@ let
         """The XFCE session with its panel; the first-login look applied (or applied by us)."""
         m = m or studio
         try:
-            m.wait_until_succeeds("pgrep -u artist -x xfce4-panel", timeout=2400)
+            m.wait_until_succeeds("pgrep -u artist -f xfce4-panel", timeout=2400)
         except Exception:
             dump(m); raise
         m.sleep(15)
