@@ -21,6 +21,7 @@ in
     ./looks.nix
     ./locked.nix
     ./copilot.nix
+    ./assist.nix
   ];
 
   options.flattoo = {
@@ -72,7 +73,7 @@ in
     look = {
       default = mkOption {
         type = types.str;
-        default = "studio-dark";
+        default = "home";
         description = "Look preset applied once at the artist's first login (see flattoo-look list).";
       };
       bundle = mkOption {
@@ -112,6 +113,11 @@ in
       darkPanel = mkOption {
         type = types.bool;
         default = true;
+      };
+      gestures = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Touchpad gestures (touchegg): three-finger swipes between workspaces, pinch to zoom.";
       };
       i3Session = mkOption {
         type = types.bool;

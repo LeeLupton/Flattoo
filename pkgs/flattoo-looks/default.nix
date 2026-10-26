@@ -24,6 +24,10 @@
   polkit,
   i3,
   xvfb-run,
+  rofi,
+  glib, # gio: trusted desktop launchers
+  xrandr,
+  xfdesktop,
   runCommand,
 }:
 let
@@ -50,6 +54,10 @@ let
     gnugrep
     systemd
     polkit
+    rofi
+    glib
+    xrandr
+    xfdesktop
   ];
 in
 stdenv.mkDerivation (finalAttrs: {
@@ -67,12 +75,19 @@ stdenv.mkDerivation (finalAttrs: {
   installPhase = ''
     runHook preInstall
     mkdir -p $out/bin $out/share/flattoo/looks $out/share/flattoo/layouts $out/share/flattoo/i3 \
+             $out/share/flattoo/rofi $out/share/flattoo/touchegg \
              $out/share/backgrounds/flattoo $out/share/applications $out/share/polkit-1/actions
 
     cp share/looks/*.json $out/share/flattoo/looks/
     cp share/layouts/*.json $out/share/flattoo/layouts/
     cp share/applications/*.desktop $out/share/applications/
     cp share/polkit-1/actions/*.policy $out/share/polkit-1/actions/
+    cp share/rofi/*.rasi $out/share/flattoo/rofi/
+    cp share/touchegg/touchegg.conf $out/share/flattoo/touchegg/
+    install -m755 bin/flattoo-apps $out/bin/flattoo-apps
+    substituteInPlace $out/bin/flattoo-apps --replace-fail '@rofi@' "$out/share/flattoo/rofi"
+    patchShebangs $out/bin/flattoo-apps
+    wrapProgram $out/bin/flattoo-apps --prefix PATH : ${lib.makeBinPath [ rofi ]}
 
     python3 wallpapers/make.py $out/share/backgrounds/flattoo 2560 1600
 
@@ -104,6 +119,7 @@ stdenv.mkDerivation (finalAttrs: {
           nativeBuildInputs = [
             finalAttrs.finalPackage
             py
+            rofi
           ];
         }
         ''
@@ -119,22 +135,40 @@ stdenv.mkDerivation (finalAttrs: {
           assert "config.txt" in names, names
           cfg = t.extractfile("config.txt").read().decode()
           props = dict(l.split(" ", 1) for l in cfg.splitlines() if l.strip())
-          assert props["/panels"] == "[<1>]"
-          assert re.fullmatch(r"'p=(6|10|5);x=0;y=0'", props["/panels/panel-1/position"]), props["/panels/panel-1/position"]
-          ids = re.findall(r"<(\d+)>", props["/panels/panel-1/plugin-ids"])
-          for i in ids:
-              assert f"/plugins/plugin-{i}" in props, i
-              if props[f"/plugins/plugin-{i}"] == "'launcher'":
-                  items = re.findall(r"'([^']+)'", props[f"/plugins/plugin-{i}/items"])
-                  for d in items:
-                      assert f"launcher-{i}/{d}" in names, (i, d)
-          print(sys.argv[1], len(ids), "plugins ok")
+          panels = re.findall(r"<(\d+)>", props["/panels"])
+          assert panels and panels[0] == "1", props["/panels"]
+          seen = set()
+          for n in panels:
+              assert re.fullmatch(r"'p=(1|5|6|9|10|11|12);x=0;y=0'", props[f"/panels/panel-{n}/position"]), props[f"/panels/panel-{n}/position"]
+              ids = re.findall(r"<(\d+)>", props[f"/panels/panel-{n}/plugin-ids"])
+              assert ids and not (set(ids) & seen), ids
+              seen |= set(ids)
+              for i in ids:
+                  assert f"/plugins/plugin-{i}" in props, i
+                  if props[f"/plugins/plugin-{i}"] == "'launcher'":
+                      items = re.findall(r"'([^']+)'", props[f"/plugins/plugin-{i}/items"])
+                      for d in items:
+                          assert f"launcher-{i}/{d}" in names, (i, d)
+          print(sys.argv[1], len(panels), "panels", len(seen), "plugins ok")
           PY
           done
           for l in ${finalAttrs.finalPackage}/share/flattoo/layouts/*.json; do
             flattoo-layout validate $l
           done
           flattoo-look list | grep -q "Studio Dark"
+          flattoo-look list | grep -q "Home"
+          # every look names a GTK theme, icon theme and cursor that ship with the system (checked in modules/looks.nix)
+          python3 - ${finalAttrs.finalPackage}/share/flattoo/looks <<'PY'
+          import json, os, sys
+          d = sys.argv[1]
+          for f in os.listdir(d):
+              p = json.load(open(os.path.join(d, f)))
+              for k in ("gtk_theme", "xfwm_theme", "icon_theme", "cursor_theme", "wallpaper", "title"):
+                  assert p.get(k), (f, k)
+              assert p.get("app_names") in ("familiar", "standard"), f
+          PY
+          # the app grid theme parses
+          rofi -dump-theme -theme ${finalAttrs.finalPackage}/share/flattoo/rofi/apps.rasi >/dev/null
           flattoo-layout list | grep -q "Reference + Draw"
 
           # export / restore round trip

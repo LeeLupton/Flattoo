@@ -14,6 +14,7 @@ A preset can be partial: only the keys it has are applied.
 
 import argparse
 import glob
+import hashlib
 import io
 import json
 import os
@@ -42,6 +43,12 @@ LAUNCHERS = {
     "menu": None,
     "copilot": "flattoo-copilot.desktop",
     "wiki": "flattoo-wiki.desktop",
+    "apps": "flattoo-apps.desktop",
+    "photos": "org.xfce.ristretto.desktop",
+    "settings": "xfce-settings-manager.desktop",
+    "print": "stencil-print.desktop",
+    "portfolio": "flattoo-portfolio.desktop",
+    "profile": "flattoo-profile.desktop",
     "krita": "org.kde.krita.desktop",
     "mypaint": "mypaint.desktop",
     "inkscape": "org.inkscape.Inkscape.desktop",
@@ -106,61 +113,96 @@ def load_preset(name):
 
 # ------------------------------------------------------------------ panel profile
 
-def panel_profile_tar(panel, out_path):
-    """Build an xfce4-panel-profiles tarball from a panel description.
+POSITIONS = {  # xfce4-panel snap positions (panel-window.c)
+    "top": "p=6;x=0;y=0", "top-center": "p=9;x=0;y=0", "bottom": "p=10;x=0;y=0",
+    "bottom-center": "p=10;x=0;y=0", "left": "p=5;x=0;y=0", "right": "p=1;x=0;y=0",
+}
+WIDGETS = {  # item name -> (plugin type, props)
+    "menu": ("whiskermenu", {}),
+    "apps": ("launcher", {"items": ("as", ["flattoo-apps.desktop"])}),
+    "sep": ("separator", {"style": ("uint32", 0)}),
+    "line": ("separator", {"style": ("uint32", 1)}),
+    "spacer": ("separator", {"expand": ("bool", True), "style": ("uint32", 0)}),
+    "dock": ("docklike", {}),
+    "tray": ("systray", {"square-icons": ("bool", True)}),
+    "volume": ("pulseaudio", {"enable-keyboard-shortcuts": ("bool", True)}),
+    "power": ("power-manager-plugin", {}),
+    "showdesktop": ("showdesktop", {}),
+}
 
-    panel = {"position": "top"|"bottom", "size": 40, "icon_size": 24, "dark": true,
-             "autohide": false, "launchers": ["menu","krita",...], "clock": "%a %b %-d  %-I:%M %p",
-             "show_labels": true, "length": 100}
-    """
-    pos = {"top": "p=6;x=0;y=0", "bottom": "p=10;x=0;y=0", "left": "p=5;x=0;y=0"}[panel.get("position", "top")]
-    plugins = []  # (type, props dict)
-    launchers = panel.get("launchers", ["menu", "krita", "mypaint", "inkscape", "files", "scan", "calibrate", "localsend", "firefox"])
-    for name in launchers:
-        if name == "menu":
-            plugins.append(("whiskermenu", {}))
-        elif name == "sep":
-            plugins.append(("separator", {"style": ("uint32", 0)}))
+
+def panel_items(panel):
+    """The ordered plugin list for one panel: `items` as given, or the classic
+    launchers + window list + tray + clock arrangement built from `launchers`."""
+    if "items" in panel:
+        names = panel["items"]
+    else:
+        names = list(panel.get("launchers", ["menu", "krita", "mypaint", "inkscape", "files", "scan", "calibrate", "localsend", "firefox"]))
+        names += ["tasklist", "spacer", "tray", "volume", "power", "clock"] + (["showdesktop"] if panel.get("show_desktop", True) else [])
+    plugins = []
+    for name in names:
+        if name == "tasklist":
+            plugins.append(("tasklist", {"grouping": ("bool", True), "show-labels": ("bool", panel.get("show_labels", True))}))
+        elif name == "clock":
+            plugins.append(("clock", {"digital-layout": ("uint32", 3), "digital-time-format": ("s", panel.get("clock", "%a %b %-d  %-I:%M %p"))}))
+        elif name in WIDGETS:
+            plugins.append(WIDGETS[name])
         elif name in LAUNCHERS and LAUNCHERS[name]:
             plugins.append(("launcher", {"items": ("as", [LAUNCHERS[name]])}))
         elif name.endswith(".desktop"):
             plugins.append(("launcher", {"items": ("as", [name])}))
-    plugins.append(("tasklist", {"grouping": ("bool", True), "show-labels": ("bool", panel.get("show_labels", True))}))
-    plugins.append(("separator", {"expand": ("bool", True), "style": ("uint32", 0)}))
-    plugins.append(("systray", {"square-icons": ("bool", True)}))
-    plugins.append(("pulseaudio", {"enable-keyboard-shortcuts": ("bool", True)}))
-    plugins.append(("power-manager-plugin", {}))
-    plugins.append(("clock", {"digital-layout": ("uint32", 3), "digital-time-format": ("s", panel.get("clock", "%a %b %-d  %-I:%M %p"))}))
-    if panel.get("show_desktop", True):
-        plugins.append(("showdesktop", {}))
+    return plugins
 
-    props = {
-        "/configver": "2",
-        "/panels": "[<1>]",
-        "/panels/dark-mode": "true" if panel.get("dark", True) else "false",
-        "/panels/panel-1/position": f"'{pos}'",
-        "/panels/panel-1/length": f"uint32 {panel.get('length', 100)}",
-        "/panels/panel-1/position-locked": "true",
-        "/panels/panel-1/icon-size": f"uint32 {panel.get('icon_size', 24)}",
-        "/panels/panel-1/size": f"uint32 {panel.get('size', 40)}",
-        "/panels/panel-1/autohide-behavior": f"uint32 {1 if panel.get('autohide') else 0}",
-        "/panels/panel-1/mode": f"uint32 {1 if panel.get('position') == 'left' else 0}",
-        "/panels/panel-1/plugin-ids": "[" + ", ".join(f"<{i}>" for i in range(1, len(plugins) + 1)) + "]",
-    }
+
+def panel_profile_tar(panel, out_path):
+    """Build an xfce4-panel-profiles tarball from one panel description or a
+    list of them (`panels` in a preset).
+
+    panel = {"position": "top"|"bottom"|"bottom-center"|"left", "size": 40, "icon_size": 24,
+             "dark": true, "autohide": false, "length": 100, "length_adjust": true,
+             "background": [r, g, b, a] (translucent dock) or absent (theme),
+             "launchers": ["menu","krita",...]  or  "items": ["apps","files","dock","spacer","tray","clock"],
+             "clock": "%a %b %-d  %-I:%M %p", "show_labels": true}
+    """
+    panels = panel if isinstance(panel, list) else [panel]
+    props = {"/configver": "2", "/panels": "[" + ", ".join(f"<{i}>" for i in range(1, len(panels) + 1)) + "]",
+             "/panels/dark-mode": "true" if panels[0].get("dark", True) else "false"}
     desktops = {}
-    for i, (ptype, pprops) in enumerate(plugins, 1):
-        props[f"/plugins/plugin-{i}"] = f"'{ptype}'"
-        for k, (t, v) in pprops.items():
-            if t == "as":
-                props[f"/plugins/plugin-{i}/{k}"] = "[" + ", ".join(f"'{x}'" for x in v) + "]"
-                for d in v:
-                    desktops[f"launcher-{i}/{d}"] = find_desktop_file(d)
-            elif t == "bool":
-                props[f"/plugins/plugin-{i}/{k}"] = "true" if v else "false"
-            elif t == "uint32":
-                props[f"/plugins/plugin-{i}/{k}"] = f"uint32 {v}"
-            elif t == "s":
-                props[f"/plugins/plugin-{i}/{k}"] = "'" + v.replace("'", "\\'") + "'"
+    pid = 0
+    for n, pn in enumerate(panels, 1):
+        plugins = panel_items(pn)
+        ids = list(range(pid + 1, pid + 1 + len(plugins)))
+        pid += len(plugins)
+        pos = POSITIONS.get(pn.get("position", "top"), POSITIONS["top"])
+        props.update({
+            f"/panels/panel-{n}/position": f"'{pos}'",
+            f"/panels/panel-{n}/length": f"uint32 {pn.get('length', 100)}",
+            f"/panels/panel-{n}/length-adjust": "true" if pn.get("length_adjust", True) else "false",
+            f"/panels/panel-{n}/position-locked": "true",
+            f"/panels/panel-{n}/icon-size": f"uint32 {pn.get('icon_size', 24)}",
+            f"/panels/panel-{n}/size": f"uint32 {pn.get('size', 40)}",
+            f"/panels/panel-{n}/nrows": f"uint32 {pn.get('rows', 1)}",
+            f"/panels/panel-{n}/autohide-behavior": f"uint32 {1 if pn.get('autohide') else 0}",
+            f"/panels/panel-{n}/mode": f"uint32 {1 if pn.get('position') in ('left', 'right') else 0}",
+            f"/panels/panel-{n}/plugin-ids": "[" + ", ".join(f"<{i}>" for i in ids) + "]",
+        })
+        if pn.get("background"):
+            r, g, b, a = pn["background"]
+            props[f"/panels/panel-{n}/background-style"] = "uint32 1"
+            props[f"/panels/panel-{n}/background-rgba"] = f"[{r}, {g}, {b}, {a}]"
+        for i, (ptype, pprops) in zip(ids, plugins):
+            props[f"/plugins/plugin-{i}"] = f"'{ptype}'"
+            for k, (t, v) in pprops.items():
+                if t == "as":
+                    props[f"/plugins/plugin-{i}/{k}"] = "[" + ", ".join(f"'{x}'" for x in v) + "]"
+                    for d in v:
+                        desktops[f"launcher-{i}/{d}"] = find_desktop_file(d)
+                elif t == "bool":
+                    props[f"/plugins/plugin-{i}/{k}"] = "true" if v else "false"
+                elif t == "uint32":
+                    props[f"/plugins/plugin-{i}/{k}"] = f"uint32 {v}"
+                elif t == "s":
+                    props[f"/plugins/plugin-{i}/{k}"] = "'" + v.replace("'", "\\'") + "'"
     config = "\n".join(f"{k} {v}" for k, v in sorted(props.items())) + "\n"
     with tarfile.open(out_path, "w:bz2") as t:
         def add(name, data):
@@ -174,13 +216,15 @@ def panel_profile_tar(panel, out_path):
     return props
 
 
-def find_desktop_file(desktop_id):
-    """Contents of a system .desktop file by id; a stub if not installed."""
-    for base in os.environ.get("XDG_DATA_DIRS", "/run/current-system/sw/share:/usr/share").split(":") + [os.path.join(HOME, ".local/share")]:
+def find_desktop_file(desktop_id, stub=True):
+    """Contents of a system .desktop file by id; a stub if not installed (or None)."""
+    for base in os.environ.get("XDG_DATA_DIRS", "/run/current-system/sw/share:/usr/share").split(":"):
         p = os.path.join(base, "applications", desktop_id)
         if os.path.exists(p):
             with open(p, "rb") as f:
                 return f.read()
+    if not stub:
+        return None
     name = desktop_id.rsplit(".desktop", 1)[0].split(".")[-1]
     return f"[Desktop Entry]\nType=Application\nName={name}\nExec={name}\nIcon={name}\n".encode()
 
@@ -216,12 +260,113 @@ def apply_live(p, quiet=False):
             xq_set_array("xfwm4", "/general/workspace_names", "string", ws["names"])
     if "wallpaper" in p:
         set_wallpaper(resolve_wallpaper(p["wallpaper"]))
-    if "panel" in p:
+    if "panels" in p:
+        apply_panel(p["panels"])
+    elif "panel" in p:
         apply_panel(p["panel"])
     if "keyboard" in p:
         for combo, cmd in p["keyboard"].items():
             xq_set("xfce4-keyboard-shortcuts", f"/commands/custom/{combo}", "string", cmd)
+    for channel, prop, typ, value in p.get("xfconf", []):
+        xq_set(channel, prop, typ, value)
+    apply_app_names(p.get("app_names"))
+    apply_desktop_launchers(p.get("desktop_launchers"))
     say("applied", p.get("name", ""))
+
+
+# Familiar names: the same apps, called what a phone or a Windows/Mac user
+# expects, with the icon theme's standard glyphs (the office documents come
+# out in the familiar blue/green/orange). Per user, in ~/.local/share/applications,
+# marked so a look without them removes them again.
+FAMILIAR = {
+    "thunar.desktop": ("Files", "system-file-manager"),
+    "org.xfce.ristretto.desktop": ("Photos", "multimedia-photo-viewer"),
+    "simple-scan.desktop": ("Scanner", "scanner"),
+    "xfce-settings-manager.desktop": ("Settings", "preferences-system"),
+    "com.github.flxzt.rnote.desktop": ("Notes", "accessories-text-editor"),
+    "startcenter.desktop": ("Office", "x-office-document"),
+    "libreoffice-writer.desktop": ("Documents", "x-office-document"),
+    "libreoffice-calc.desktop": ("Spreadsheets", "x-office-spreadsheet"),
+    "libreoffice-impress.desktop": ("Slides", "x-office-presentation"),
+    "thunderbird.desktop": ("Mail", "internet-mail"),
+    "signal.desktop": ("Messages", "internet-chat"),
+    "org.gnome.Calendar.desktop": ("Calendar", "x-office-calendar"),
+    "org.gnome.Calculator.desktop": ("Calculator", "accessories-calculator"),
+    "xfce4-terminal.desktop": ("Terminal", "utilities-terminal"),
+    "flattoo-wiki.desktop": ("Help", "help-browser"),
+}
+USER_APPS = os.path.join(os.environ.get("XDG_DATA_HOME", os.path.join(HOME, ".local", "share")), "applications")
+MARK = "X-Flattoo-Familiar=true"
+
+
+def apply_app_names(mode):
+    os.makedirs(USER_APPS, exist_ok=True)
+    for f in os.listdir(USER_APPS):
+        path = os.path.join(USER_APPS, f)
+        try:
+            with open(path, errors="replace") as fh:
+                if MARK in fh.read():
+                    os.unlink(path)
+        except OSError:
+            pass
+    if mode != "familiar":
+        return
+    for desktop_id, (name, icon) in FAMILIAR.items():
+        src = find_desktop_file(desktop_id, stub=False)
+        if not src:
+            continue
+        out = []
+        in_main = False
+        for line in src.decode(errors="replace").splitlines():
+            if line.startswith("["):
+                in_main = line.strip() == "[Desktop Entry]"
+                out.append(line)
+                if in_main:
+                    out.append(MARK)
+                continue
+            if in_main and re.match(r"(Name|Icon)=", line):
+                continue
+            if in_main and line.startswith("Name["):
+                continue
+            out.append(line)
+        at = out.index(MARK) + 1 if MARK in out else 0
+        out.insert(at, f"Icon={icon}")
+        out.insert(at, f"Name={name}")
+        with open(os.path.join(USER_APPS, desktop_id), "w") as fh:
+            fh.write("\n".join(out) + "\n")
+
+
+def apply_desktop_launchers(ids):
+    """App icons on the desktop (the phone-style home screen). Managed files
+    only: launchers we put there are marked and removed by looks without them."""
+    desk = os.path.join(HOME, "Desktop")
+    os.makedirs(desk, exist_ok=True)
+    for f in os.listdir(desk):
+        path = os.path.join(desk, f)
+        if f.endswith(".desktop"):
+            try:
+                with open(path, errors="replace") as fh:
+                    if "X-Flattoo-Home=true" in fh.read():
+                        os.unlink(path)
+            except OSError:
+                pass
+    if not ids:
+        return
+    for name in ids:
+        desktop_id = LAUNCHERS.get(name, name if name.endswith(".desktop") else None)
+        if not desktop_id:
+            continue
+        src = find_desktop_file(desktop_id, stub=False)
+        if not src:
+            continue
+        text = src.decode(errors="replace").replace("[Desktop Entry]", "[Desktop Entry]\nX-Flattoo-Home=true", 1)
+        path = os.path.join(desk, desktop_id)
+        with open(path, "w") as fh:
+            fh.write(text)
+        os.chmod(path, 0o755)
+        # xfdesktop trusts a launcher whose checksum it has seen
+        h = hashlib.sha256(text.encode()).hexdigest()
+        run(["gio", "set", "-t", "string", path, "metadata::xfce-exe-checksum", h])
 
 
 def resolve_wallpaper(name):
@@ -236,13 +381,18 @@ def resolve_wallpaper(name):
 
 
 def set_wallpaper(path):
+    """Every backdrop property xfdesktop already has, plus one per connected
+    monitor and workspace (a fresh profile has none yet)."""
     out = run(["xfconf-query", "-c", "xfce4-desktop", "-l"]).stdout
-    props = [l.strip() for l in out.splitlines() if l.strip().endswith("/last-image")]
-    if not props:
-        props = ["/backdrop/screen0/monitor0/workspace0/last-image"]
-    for prop in props:
+    props = {l.strip() for l in out.splitlines() if l.strip().endswith("/last-image")}
+    mons = re.findall(r"^\s*\d+:\s+\+?\*?(\S+)", run(["xrandr", "--listmonitors"]).stdout, re.M)
+    for m in mons or ["0"]:
+        for ws in range(4):
+            props.add(f"/backdrop/screen0/monitor{m}/workspace{ws}/last-image")
+    for prop in sorted(props):
         xq_set("xfce4-desktop", prop, "string", path)
         xq_set("xfce4-desktop", prop.replace("last-image", "image-style"), "int", 5)  # zoomed
+    run(["xfdesktop", "--reload"])
 
 
 def apply_panel(panel):
@@ -407,7 +557,8 @@ def main(argv=None):
     if args.cmd == "restore-files":
         restore_files(args.dir); return 0
     if args.cmd == "panel-tar":
-        panel_profile_tar(load_preset(args.name).get("panel", {}), args.out); print(args.out); return 0
+        pr = load_preset(args.name)
+        panel_profile_tar(pr.get("panels") or pr.get("panel", {}), args.out); print(args.out); return 0
     return 2
 
 

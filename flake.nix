@@ -66,6 +66,7 @@
           flattoo-looks
           flattoo-copilot
           flattoo-wiki
+          flattoo-assist
           phomemo-cups
           brother-pj723-lpr
           brother-pj723-cupswrapper
@@ -78,6 +79,8 @@
           }) pkgs.brother-pj-cupswrappers
         );
         iso = self.nixosConfigurations.installer.config.system.build.isoImage;
+        # The website (GitHub Pages): `nix build .#site`
+        site = pkgs.flattoo-site.override { version = self.shortRev or self.dirtyShortRev or "dev"; };
         # Desktop screenshots for the wiki, taken in a VM: `nix build .#screenshots`
         screenshots = import ./tests/screenshots.nix { inherit pkgs self disko; };
         default = pkgs.stencil-tools;
@@ -93,6 +96,8 @@
         copilot-matcher = pkgs.flattoo-copilot.tests.matcher;
         copilot-admin = pkgs.flattoo-copilot.tests.admin;
         wiki-content = pkgs.flattoo-wiki.tests.content;
+        assist-offline = pkgs.flattoo-assist.tests.offline;
+        site = self.packages.${system}.site;
         # Every catalog entry must name a real package in the pinned nixpkgs.
         copilot-catalog = pkgs.runCommand "flattoo-copilot-catalog" {
           names = map (

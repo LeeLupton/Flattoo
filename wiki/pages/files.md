@@ -16,7 +16,7 @@ shortcuts: ["Super+E"]
 screenshots: [files-right-click]
 related: [sketch-to-stencil, print-stencil, phone-photos]
 ---
-**Files** is on the panel (or **Super+E**). On the left: **Home**, **Pictures**, **Documents**, **Downloads**, and any USB stick, SD card or phone that is plugged in.
+**Files** is on the dock (or **Super+E**). On the left: **Home**, **Pictures**, **Documents**, **Downloads**, and any USB stick, SD card or phone that is plugged in.
 
 Where things go by default:
 

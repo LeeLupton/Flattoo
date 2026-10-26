@@ -12,15 +12,34 @@ keyboard shortcuts, live, through xfconf — no logout.
 
 | Preset | Feel |
 |---|---|
-| **Studio Dark** (default) | Dark grey, cool accents, panel on top. Krita, MyPaint, Inkscape, files, scan, calibration, LocalSend, Firefox. |
-| **Paper** | Light, warm, quiet; looks like the sketchbook. Panel on top. |
-| **Night Session** | Near-black (Dracula), panel hides until the mouse touches the bottom edge. Nothing but the canvas. |
-| **Big and Simple** | Large text and icons, dock-style bottom panel with the four things that matter: Krita, scan, calibration, Firefox. |
-| **Classic Desktop** | Bottom panel, menu left, clock right. Feels like the last computer. |
-| **Gruvbox** | Warm retro palette, panel on the left edge to keep the canvas wide. |
+| **Home** (default) | Phone-style: app icons on the desktop (managed `~/Desktop/*.desktop`, trusted via `metadata::xfce-exe-checksum`), a translucent centered dock (second panel: `xfce4-docklike-plugin` for running apps, big launchers), a slim top status bar (clock left, tray/volume/battery right), WhiteSur-Light GTK/xfwm + WhiteSur icons + WhiteSur cursors, Inter, single-click in Thunar and on the desktop, `titleless_maximize`, mac-style button layout, Super → the rofi app grid (`flattoo-apps`, `share/rofi/apps.rasi`). Familiar app names (`app_names: familiar`): Files, Photos, Scanner, Settings, Notes, Documents/Spreadsheets/Slides, Mail, Messages, Calendar, Calculator — per-user overrides in `~/.local/share/applications`, marked and removed by looks that use standard names. |
+| **Home (dark)** | Same, WhiteSur-Dark. |
+| **Studio Dark** | Dark grey, cool accents, panel on top. |
+| **Paper** | Light, warm, paper wallpaper. |
+| **Night Session** | Near-black, autohiding panel. |
+| **Big and Simple** | Large icons and text, dock at the bottom. |
+| **Classic Desktop** | Windows-style: Fluent-Light GTK/xfwm + Fluent icons, taskbar at the bottom, menu left, clock right, familiar names. |
+| **Gruvbox** | Warm retro palette, panel on the left. |
+
+Icon themes are the open-source WhiteSur (Mac-style) and Fluent (Windows
+11-style) sets from nixpkgs; the familiar-name overrides point office apps at
+the standard `x-office-document/-spreadsheet/-presentation` glyphs, which
+those themes draw in the blue/green/orange people expect.
 
 Every preset carries the **Ask Flattoo** button next to the menu and
 `Super+Space` for it; `Super` alone opens the menu, `Super+P` prints a stencil, `Super+L` opens layouts.
+
+A preset may carry `panels` (a list; each with `position`, `size`, `icon_size`,
+`length`, `length_adjust`, `background` rgba, and `items` — launcher ids,
+`apps`, `menu`, `dock`, `tasklist`, `spacer`, `sep`, `tray`, `volume`, `power`,
+`clock`, `showdesktop`), `xfconf` (extra `[channel, property, type, value]`
+settings), `desktop_launchers` and `app_names`. `flattoo-look panel-tar NAME
+out.tar.bz2` shows the generated panel profile.
+
+Touchpad gestures (`flattoo.desktop.gestures`, touchegg): three fingers
+left/right change workspace (browser: back/forward), up maximizes, down
+minimizes; four fingers up shows the desktop; pinch zooms. Config seeded to
+`~/.config/touchegg/touchegg.conf` at first login.
 
 **Save current look** turns whatever the artist has tweaked by hand
 (Appearance, Window Manager, Panel settings, `lxappearance`) into a new

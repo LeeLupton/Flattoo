@@ -19,7 +19,7 @@ The **Super** key is the one with the window logo, left of the space bar.
 
 | Keys | Does |
 |---|---|
-| **Super** | Opens the menu |
+| **Super** | The app grid (Home looks) or the menu (other looks) |
 | **Super + Space** | Ask Flattoo |
 | **Super + P** | Print as Stencil |
 | **Super + L** | Layouts |

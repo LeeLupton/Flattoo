@@ -50,5 +50,6 @@
     "<Super>space": "flattoo-copilot",
     "Super_L": "xfce4-popup-whiskermenu"
   },
-  "name": "night-session"
+  "name": "night-session",
+  "app_names": "standard"
 }

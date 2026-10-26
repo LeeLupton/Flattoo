@@ -1,0 +1,60 @@
+/* Flattoo app grid: a phone-style home screen of app icons, Super or the
+   grid button on the dock. Type to filter, arrows to move, Enter to open. */
+configuration {
+    show-icons: true;
+    drun-display-format: "{name}";
+    disable-history: false;
+    hover-select: true;
+    me-select-entry: "";
+    me-accept-entry: "MousePrimary";
+}
+* {
+    background-color: transparent;
+    text-color: #1d1d1f;
+    font: "Inter 12";
+}
+window {
+    fullscreen: true;
+    background-color: rgba(245, 245, 250, 0.90);
+    padding: 6% 8%;
+}
+mainbox {
+    spacing: 28px;
+}
+inputbar {
+    background-color: rgba(255, 255, 255, 0.85);
+    border-radius: 14px;
+    padding: 12px 18px;
+    children: [ "prompt", "entry" ];
+}
+prompt { enabled: false; }
+entry {
+    placeholder: "Search apps";
+    placeholder-color: #8e8e93;
+    font: "Inter 15";
+}
+listview {
+    columns: 6;
+    lines: 4;
+    spacing: 18px;
+    fixed-columns: true;
+    cycle: false;
+    scrollbar: false;
+}
+element {
+    orientation: vertical;
+    padding: 14px 6px;
+    border-radius: 18px;
+    spacing: 10px;
+}
+element selected {
+    background-color: rgba(255, 255, 255, 0.75);
+}
+element-icon {
+    size: 4.6em;
+    horizontal-align: 0.5;
+}
+element-text {
+    horizontal-align: 0.5;
+    font: "Inter 11";
+}

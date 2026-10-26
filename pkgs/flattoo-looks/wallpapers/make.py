@@ -44,3 +44,28 @@ def make(name, c0, c1, grain, vig):
 for name, (c0, c1, grain, vig) in PALETTES.items():
     make(name, c0, c1, grain, vig)
     print(name)
+
+
+# Soft colour blobs on a light or dark base, like a phone's stock wallpaper.
+BLOBS = {
+    "home": ((238, 240, 248), [((0.20, 0.25), (120, 160, 255), 0.55), ((0.80, 0.30), (255, 150, 190), 0.50),
+                               ((0.55, 0.85), (140, 220, 200), 0.55), ((0.10, 0.90), (255, 205, 130), 0.40)]),
+    "home-dark": ((18, 20, 30), [((0.25, 0.30), (70, 90, 210), 0.65), ((0.80, 0.25), (190, 70, 150), 0.55),
+                                 ((0.60, 0.85), (40, 160, 150), 0.55), ((0.15, 0.85), (210, 120, 60), 0.40)]),
+}
+
+
+def make_blobs(name, base, blobs):
+    y, x = np.mgrid[0:H, 0:W].astype(np.float32)
+    img = np.ones((H, W, 3), np.float32) * np.array(base, np.float32)
+    for (bx, by), colour, size in blobs:
+        d2 = ((x / W - bx) ** 2 + ((y / H - by) ** 2) * (H / W) ** 2 * 1.4)
+        w = np.exp(-d2 / (2 * (size * 0.33) ** 2))
+        img += (np.array(colour, np.float32) - np.array(base, np.float32))[None, None, :] * (w * 0.9)[..., None]
+    pil = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8), "RGB").filter(ImageFilter.GaussianBlur(W / 40))
+    pil.save(f"{out}/{name}.png", optimize=True)
+
+
+for name, (base, blobs) in BLOBS.items():
+    make_blobs(name, base, blobs)
+    print(name)

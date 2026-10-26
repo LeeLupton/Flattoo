@@ -12,7 +12,9 @@ upgrade is atomic, and the previous system is always one boot-menu entry away.
 | Draw | Krita (primary), MyPaint, AzPainter, Rnote, Inkscape for lettering, Xournal++ for tracing. GIMP (with G'MIC) installed, not on the panel. ~40 more a sentence away in Ask Flattoo. |
 | Never a terminal | **Ask Flattoo** (button next to the menu, `Super+Space`): *"something like Microsoft Paint"*, *"update now"*, *"the printer isn't working"*, *"free up space"*. A fixed set of actions and a curated app catalog behind a plain-English front end; one polkit-guarded root helper; no shell. |
 | Learn it without Lee | **Help & How-To**: 23 plain-English pages with screenshots of this very desktop (looks, layouts, scanning, printing, phone photos, updates, the lock, safety). Ask Flattoo *"how do I scan a sketch"* opens the right page. Screenshots are generated in a VM from the real configuration. [docs/wiki.md](docs/wiki.md). |
-| Make it theirs | **Looks**: six whole-desktop presets (theme, icons, fonts, wallpaper, panel, workspaces, shortcuts), live. **Layouts**: open-and-place window sets. An i3 tiling session at the login screen. Save your own of each. |
+| Feels like a phone | The default **Home** look: app icons on the screen, a dock, a status strip, one tap opens things, the Super key shows every app as a grid, three-finger swipes move between workspaces. Familiar names and icons — Files, Photos, Documents, Spreadsheets, Mail — from the open-source WhiteSur (Mac-style) and Fluent (Windows-style) sets. |
+| Make it theirs | **Looks**: eight whole-desktop presets (theme, icons, fonts, wallpaper, panels, workspaces, shortcuts, app names), live. **Layouts**: open-and-place window sets. An i3 tiling session at the login screen. Save your own of each. |
+| Looks after their name | **Portfolio** builds a gallery folder from finished-work photos (location data stripped, nothing uploaded). **Artist Profile** turns facts into a résumé, bio and press text. An exposure checklist tracks the free listings; a weekly nudge says what is worth a minute. Offers only, never actions in the artist's name. [docs/assist.md](docs/assist.md). |
 | Then freeze it | **Lock This Setup** bakes the current desktop into the NixOS config: restored at every login, settings kiosk-locked, boot menu hidden, add-ons frozen, GitHub no longer pulled — only weekly nixpkgs security bumps. **Unlock** needs the admin password. |
 | Sketch on paper | Simple Scan, then right-click → **Clean Lines** turns the pencil scan into black stencil lines. |
 | Print a stencil | Right-click any image/PDF → **Print as Stencil**. Asks for width in inches, prints 1:1 on the `Stencil` queue. |
@@ -62,7 +64,7 @@ hosts/shop-laptop/           the studio laptop: flattoo.* settings, disk layout
 hosts/installer/             installer ISO + the flattoo-install wizard
 modules/                     base, desktop, art, printing, stencil, media, laptop,
                              security, network (edge hardening, Unbound), remote,
-                             extras, autoupgrade (+ flattoo-sync), looks, locked, copilot
+                             extras, autoupgrade (+ flattoo-sync), looks, locked, copilot, assist
 pkgs/brother-pj/             PocketJet 7 LPR + CUPS wrapper derivations (5 models)
 pkgs/phomemo-cups/           Phomemo/QuYin vendor filters + 75 PPDs
 pkgs/stencil-tools/          stencil-print, stencil-clean-lines, stencil-calibrate,
@@ -73,19 +75,22 @@ pkgs/flattoo-looks/          flattoo-look, flattoo-layout, i3 config, wallpapers
                              flattoo-lock / flattoo-unlock (+ tests)
 pkgs/flattoo-copilot/        flattoo-copilot, flattoo-admin, catalog.json (+ tests)
 pkgs/flattoo-wiki/           Help & How-To: renders wiki/ to HTML + index.json (+ tests)
+pkgs/flattoo-assist/         flattoo-portfolio, flattoo-profile (+ offline test)
 wiki/pages/, wiki/screenshots/  the artist's help pages and their VM-made screenshots
 tests/screenshots.nix        the VM run that takes them (nix build .#screenshots)
 scripts/update-screenshots.sh
 tests/look-bundle/           sample captured look for checks.locked-eval
 files/                       XFCE panel/screensaver/power defaults, Thunar actions
-docs/                        install, printers, maintenance, looks, copilot, network, wiki
+docs/                        install, printers, maintenance, looks, copilot, network, wiki, assist
 .github/workflows/           weekly lock bump + eval gate; per-push checks
 ```
 
 ## Install
 
-1. `nix build .#iso` → `result-iso/iso/flattoo-installer-*.iso`. Write it to a
-   USB stick (`dd if=... of=/dev/sdX bs=4M status=progress`).
+1. Download `flattoo-installer-*.iso` from the latest release (check it
+   against `SHA256SUMS`), or build it: `nix build .#iso` →
+   `result/iso/flattoo-installer-*.iso`. Write it to a USB stick
+   (`dd if=... of=/dev/sdX bs=4M status=progress`).
 2. Boot the laptop from it (UEFI). `nmtui` for Wi-Fi, then `sudo flattoo-install`.
 3. It asks for the target disk, a disk-encryption passphrase (Enter reuses
    it as the artist's screen-unlock password), and a sudo password for

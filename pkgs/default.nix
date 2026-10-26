@@ -45,11 +45,17 @@ in
 
   # Ask Flattoo: flattoo-copilot (artist), flattoo-admin (root via polkit), catalog
   flattoo-copilot = prev.callPackage ./flattoo-copilot {
-    inherit (final) flattoo-looks stencil-tools;
+    inherit (final) flattoo-looks stencil-tools flattoo-assist;
   };
 
   # Help & How-To: wiki/pages + wiki/screenshots rendered, indexed for the copilot
   flattoo-wiki = prev.callPackage ./flattoo-wiki {
     inherit (final) flattoo-copilot;
   };
+
+  # Portfolio gallery, Artist Profile / résumé, exposure checklist, weekly nudge
+  flattoo-assist = prev.callPackage ./flattoo-assist { };
+
+  # GitHub Pages site: landing + wiki + docs
+  flattoo-site = prev.callPackage ./flattoo-site { inherit (final) flattoo-wiki; };
 }

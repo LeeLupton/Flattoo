@@ -54,6 +54,18 @@ Properties:
 | Print a stencil from the shell | `stencil-print --width 3.5 design.png` |
 | Reformat the Nix files | `nix fmt` |
 
+## Website and releases
+
+* **Website** (`.github/workflows/pages.yml`): every push that touches the
+  wiki, docs or README rebuilds `nix build .#site` and publishes it to GitHub
+  Pages — landing page with the download button, Help & How-To, rendered
+  docs. One-time: repo Settings → Pages → Source: *GitHub Actions*.
+* **Releases** (`.github/workflows/release.yml`): `git tag v2026.10.1 && git
+  push origin v2026.10.1` builds the installer ISO and attaches it with
+  `SHA256SUMS` to a GitHub Release; the site's Download button points at the
+  latest. Running the workflow by hand makes a pre-release named by the
+  build number. Assets must stay under 2 GiB.
+
 ## Adding software
 
 For everyone, permanently: add the package to the relevant module

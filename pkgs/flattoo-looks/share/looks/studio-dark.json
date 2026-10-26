@@ -52,5 +52,6 @@
     "<Super>space": "flattoo-copilot",
     "Super_L": "xfce4-popup-whiskermenu"
   },
-  "name": "studio-dark"
+  "name": "studio-dark",
+  "app_names": "standard"
 }

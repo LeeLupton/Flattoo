@@ -59,6 +59,12 @@ CASES = [
     ("format a usb stick", "suggest", {"gnome-disk-utility"}),
     ("i need to make a flyer", "install", {"scribus"}),
     ("consent form", "suggest", {"libreoffice-fresh"}),
+    ("make a portfolio", "portfolio", None),
+    ("photos for instagram", "portfolio", None),
+    ("my resume", "profile", None),
+    ("add fine line to my skills", "profile-skill", None),
+    ("how do I get more clients", "exposure", None),
+    ("google listing", "exposure", None),
 ]
 
 env = dict(os.environ, HOME=os.environ.get("TMPDIR", "/tmp"), XDG_DATA_DIRS="/nonexistent")

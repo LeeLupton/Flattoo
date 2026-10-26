@@ -1,0 +1,51 @@
+# The website: landing page, Help & How-To wiki, rendered docs. Built with
+# `nix build .#site`, served by GitHub Pages. One-time setup in the repo:
+# Settings → Pages → Source: "GitHub Actions".
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "wiki/**"
+      - "docs/**"
+      - "README.md"
+      - "pkgs/flattoo-wiki/**"
+      - "pkgs/flattoo-site/**"
+      - "pkgs/flattoo-copilot/**"
+      - "flake.*"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - run: nix build .#site --print-build-logs
+      - run: cp -rL result site-out
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site-out
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

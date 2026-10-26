@@ -74,6 +74,25 @@ laptop should notice or not care:
 * **Remote maintenance** (if enabled) is WireGuard through Tailscale — keyed
   at both ends, indifferent to the path.
 
+Where the signing key lives decides what the gate is worth. The laptop
+trusts whatever can sign with a listed key, so the key must not be
+extractable from the machine that signs: use a hardware security key
+(`ssh-keygen -t ed25519-sk -O resident -O verify-required`; FIDO2, touch and
+PIN per signature) rather than a file key on a desktop that may be
+compromised. A compromised host can then at most sign while you are present
+and touching the key — and cannot sign later, or without you. A separate
+"burner" machine is weaker than that unless it stays offline, and offline
+git signing is awkward; the token is the practical answer. Keep the list to
+two principals: your key and the CI key (which only ever signs the weekly
+lock bump).
+
+A second gate costs nothing: point the laptop at a branch you only
+fast-forward after review — `flattoo.autoUpgrade.flake =
+"github:LeeLupton/Flattoo/release#shop-laptop"` — and leave `main` for
+work in progress. Commits made from Claude sessions carry the session's own
+key; a signed merge or `git commit -S --amend` from your key is what the
+laptop will accept.
+
 Turning signed-only on:
 
 ```nix

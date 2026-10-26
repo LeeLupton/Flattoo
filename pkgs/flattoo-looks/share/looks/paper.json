@@ -49,5 +49,6 @@
     "<Super>space": "flattoo-copilot",
     "Super_L": "xfce4-popup-whiskermenu"
   },
-  "name": "paper"
+  "name": "paper",
+  "app_names": "standard"
 }

@@ -12,7 +12,7 @@ questions:
   - I am new to this
 actions: [help]
 menu: []
-screenshots: [look-studio-dark, menu]
+screenshots: [look-home, apps-grid, menu]
 related: [ask-flattoo, looks, draw, print-stencil]
 ---
 ## Turning it on
@@ -25,13 +25,12 @@ Close the lid to put it to sleep. Open the lid, type the passphrase, carry on wh
 
 ## The desktop
 
-The bar along the top is the **panel**. From left to right:
+It works like a phone. The icons on the screen open apps with one tap. The **dock** along the bottom has the ones you use most — the app grid, Files, Photos, Krita, Firefox, Ask Flattoo — and whatever is open. The strip along the top shows the time, Wi-Fi, sound and battery.
 
-- **Menu** — every app, by category, with a search box. The Super key (the one with the window logo) opens it too.
+- **The grid button** (or the Super key, the one with the window logo) shows every app as icons. Type a few letters to find one.
 - **Ask Flattoo** — the speech bubble. Type what you need in plain words. See [Ask Flattoo](ask-flattoo.html).
 - **Krita, MyPaint, Inkscape** — drawing. See [Drawing](draw.html).
-- **Files**, **Document Scanner**, **Stencil Printer Calibration**, **LocalSend**, **Firefox**.
-- On the right: open windows, volume, battery, clock.
+- **Files**, **Photos**, **Scanner**, **Print Stencil**, **Calibration**, **LocalSend**, **Firefox**.
 
 Right-click any picture in Files and you get **Print as Stencil**, **Clean Lines**, and **Open in Krita**.
 

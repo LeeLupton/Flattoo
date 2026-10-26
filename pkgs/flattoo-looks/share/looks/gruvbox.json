@@ -51,5 +51,6 @@
     "<Super>space": "flattoo-copilot",
     "Super_L": "xfce4-popup-whiskermenu"
   },
-  "name": "gruvbox"
+  "name": "gruvbox",
+  "app_names": "standard"
 }

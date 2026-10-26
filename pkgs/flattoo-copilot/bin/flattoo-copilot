@@ -57,6 +57,10 @@ ACTIONS = {
     "layout": "Open a window layout",
     "lock": "Lock the setup",
     "installed": "List what is installed",
+    "portfolio": "Build a gallery from your finished-work photos (nothing uploaded)",
+    "profile": "Your artist profile: résumé, bio, certifications",
+    "profile-skill": "Add a style or skill to your profile",
+    "exposure": "The free places you are listed, and which need a refresh",
     "learn": "Open the help page about something (how do I…, what is…)",
     "help": "Explain what I can do",
 }
@@ -75,6 +79,9 @@ SYNONYMS = {
     "lock": ["lock the setup", "lock this", "make it permanent", "freeze", "lock down", "lock it"],
     "look": ["theme", "dark mode", "light mode", "look", "colors", "colours", "wallpaper", "panel", "bigger text", "text bigger", "larger text", "font size", "appearance", "icons", "cursor"],
     "installed": ["what is installed", "what do i have", "list apps", "installed apps", "what apps", "which apps"],
+    "portfolio": ["portfolio", "gallery", "showcase", "photos for instagram", "photos for my website", "post my work", "my work online", "contact sheet"],
+    "profile": ["resume", "résumé", "cv ", " cv", "my bio", "biography", "my profile", "artist profile", "certification", "press kit", "my skills"],
+    "exposure": ["exposure", "more clients", "reviews", "google listing", "google business", "promote", "promotion", "reputation", "marketing", "followers", "get found", "get noticed"],
     "help": ["help", "what can you do", "what do you do"],
 }
 
@@ -304,15 +311,20 @@ def classify(text, cat):
         if hits and hits[0][0] >= 1.0:
             return "learn", {"page": hits[0][1]["id"], "candidates": wiki_candidates(hits)}, 0.8
 
-    # 4. System chores.
+    # 4. "add fine line to my skills / résumé / profile"
+    m = re.search(r"(?:add|put)\s+(.+?)\s+(?:to|on|in)\s+my\s+(?:skills?|r[eé]sum[eé]|cv|profile|bio)", t)
+    if m:
+        return "profile-skill", {"skill": re.sub(r"[^a-z0-9 +&/-]", "", m.group(1)).strip()[:40]}, 0.8
+
+    # 5. System chores.
     for action, syns in SYNONYMS.items():
         if any(s in t for s in syns):
             return action, {}, 0.8
 
-    # 5. A vague app wish ("something for photos").
+    # 6. A vague app wish ("something for photos").
     if hits:
         return "suggest", {"query": text, "candidates": [e["pkg"] for _, e in hits[:5]]}, 0.6
-    # 6. Anything the wiki knows about.
+    # 7. Anything the wiki knows about.
     whits = wiki_search(text)
     if whits and whits[0][0] >= 1.0:
         return "learn", {"page": whits[0][1]["id"], "candidates": wiki_candidates(whits)}, 0.5
@@ -376,6 +388,11 @@ def llm_choose(text, cat, provider, machine_info, installed):
         if args.get("page") not in ids:
             return None
         args = {"page": args["page"], "candidates": [args["page"]]}
+    elif d["action"] == "profile-skill":
+        skill = re.sub(r"[^A-Za-z0-9 +&/-]", "", str(args.get("skill", ""))).strip()[:40]
+        if not skill:
+            return None
+        args = {"skill": skill}
     else:
         args = {}
     say = str(d.get("say", ""))[:400]
@@ -510,6 +527,12 @@ def do_simple(action):
         return (f"Connected: {st}" if st else "Not connected.") + "\nOpening the Wi-Fi settings.", None
     if action == "bluetooth":
         spawn(["blueman-manager"]); return "Opening Bluetooth.", None
+    if action == "portfolio":
+        spawn(["flattoo-portfolio"]); return "Opening Portfolio. It finds your finished-work photos and builds a gallery folder; originals stay put, nothing is uploaded.", None
+    if action == "profile":
+        spawn(["flattoo-profile"]); return "Opening Artist Profile: résumé, bio, certifications, links.", None
+    if action == "exposure":
+        spawn(["flattoo-profile", "exposure-gui"]); return "Opening the exposure checklist: the free places a studio is listed and which ones need a refresh.", None
     if action == "power":
         spawn(["xfce4-session-logout"]); return "Pick Shut Down, Restart, Suspend or Log Out.", None
     if action == "display":
@@ -644,6 +667,13 @@ def handle(text, ui, provider="none"):
         msg, follow = do_disk(ui)
     elif action == "installed":
         msg, follow = do_installed(cat)
+    elif action == "profile-skill":
+        skill = args.get("skill", "")
+        if skill and ui.confirm(f"Add “{skill}” to the styles and skills on your profile?", "Add"):
+            r = run(["flattoo-profile", "add-skill", skill])
+            msg, follow = (f"Added “{skill}”. Ask me for “my resume” to render it." if r.returncode == 0 else "Could not update the profile."), None
+        else:
+            msg, follow = "Okay, nothing added.", None
     elif action == "learn":
         msg, follow = do_learn(args.get("page"), args.get("candidates") or [args.get("page")], ui)
     elif action == "help":

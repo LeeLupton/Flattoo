@@ -13,7 +13,7 @@ questions:
 actions: [open]
 menu: [LocalSend, Files]
 screenshots: [look-studio-dark]
-related: [files, sketch-to-stencil, internet]
+related: [files, sketch-to-stencil, internet, assist]
 ---
 ## LocalSend (no cable, no cloud)
 
@@ -30,6 +30,10 @@ Plug it in. The phone asks **Trust This Computer?** — tap Trust and enter the 
 ## Android by cable
 
 Plug it in and, on the phone, choose **File transfer** (sometimes "MTP") in the USB notification. The phone appears in Files.
+
+## Making a gallery of them
+
+Once the finished-work photos are on the laptop, **Portfolio** turns the good ones into a gallery folder for your website and posts — with the location data removed. [What the laptop offers to do](assist.html).
 
 ## Formats
 

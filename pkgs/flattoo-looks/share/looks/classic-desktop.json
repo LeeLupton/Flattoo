@@ -1,9 +1,9 @@
 {
   "title": "Classic Desktop",
-  "description": "Bottom panel, menu on the left, clock on the right. Feels like the last computer.",
-  "gtk_theme": "Adwaita",
-  "xfwm_theme": "Default",
-  "icon_theme": "Papirus",
+  "description": "Taskbar at the bottom, menu on the left, clock on the right, familiar names and icons. Feels like the last computer.",
+  "gtk_theme": "Fluent-Light",
+  "xfwm_theme": "Fluent-Light",
+  "icon_theme": "Fluent-light",
   "cursor_theme": "Adwaita",
   "cursor_size": 24,
   "font": "Noto Sans 11",
@@ -44,5 +44,6 @@
     "<Super>space": "flattoo-copilot",
     "Super_L": "xfce4-popup-whiskermenu"
   },
-  "name": "classic-desktop"
+  "name": "classic-desktop",
+  "app_names": "familiar"
 }

@@ -1,0 +1,61 @@
+# A release: the installer ISO built from a tag, with its checksum, attached
+# to a GitHub Release. The website's Download button points at the latest.
+#
+#   git tag v2026.10.1 && git push origin v2026.10.1
+# or run it by hand (workflow_dispatch) for a pre-release named by the commit.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  iso:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free disk space on the runner
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force || true
+          df -h /
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - name: Build the installer ISO
+        run: |
+          nix build .#iso --print-build-logs
+          iso=$(ls result/iso/*.iso)
+          mkdir -p out
+          cp -L "$iso" out/
+          cd out
+          sha256sum *.iso > SHA256SUMS
+          ls -la
+          size=$(stat -c %s *.iso)
+          if [ "$size" -gt 2000000000 ]; then
+            echo "ISO is $size bytes; GitHub release assets must stay under 2 GiB. Trim the installer closure." >&2
+            exit 1
+          fi
+      - name: Release notes
+        run: |
+          {
+            echo "Installer ISO for Flattoo. Write it to a USB stick, boot the laptop from it, run \`sudo flattoo-install\`."
+            echo
+            echo "Verify before writing: \`sha256sum -c SHA256SUMS\`"
+            echo
+            echo "Commit: ${GITHUB_SHA}"
+          } > out/notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('build-{0}', github.run_number) }}
+          name: ${{ github.ref_type == 'tag' && github.ref_name || format('Build {0}', github.run_number) }}
+          prerelease: ${{ github.ref_type != 'tag' }}
+          body_path: out/notes.md
+          files: |
+            out/*.iso
+            out/SHA256SUMS

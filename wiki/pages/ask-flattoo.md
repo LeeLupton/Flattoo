@@ -10,7 +10,7 @@ questions:
   - what is the speech bubble
   - how do I get help
   - who do I ask
-actions: [help, install, suggest, update, learn]
+actions: [help, install, suggest, update, learn, portfolio, profile, exposure]
 menu: [Ask Flattoo]
 shortcuts: ["Super+Space"]
 screenshots: [ask-flattoo, ask-flattoo-paint]
@@ -28,6 +28,9 @@ Click the speech bubble next to the menu, or press **Super+Space**. Type what yo
 | *prints too small* | Prints the calibration page. |
 | *free up space* | Shows free space, offers to clean up. |
 | *dark mode*, *bigger text* | Opens Looks. |
+| *make a portfolio* | Builds a gallery folder from your finished-work photos — nothing uploaded. [What it offers](assist.html). |
+| *my resume*, *add fine line to my skills* | Your artist profile, rendered to a résumé and bio. |
+| *how do I get more clients* | The exposure checklist. |
 | *how do I scan a sketch* | Opens the page of this wiki that explains it. |
 | *what can you do* | The full list. |
 

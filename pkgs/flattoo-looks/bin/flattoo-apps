@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# The app grid: every app as a big icon, phone style. Super key in the Home look.
+exec rofi -show drun -theme "@rofi@/apps.rasi" "$@"

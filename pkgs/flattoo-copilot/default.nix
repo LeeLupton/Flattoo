@@ -31,6 +31,7 @@
   shellcheck,
   flattoo-looks,
   stencil-tools,
+  flattoo-assist,
 }:
 let
   py = python3;
@@ -51,6 +52,7 @@ let
     gnugrep
     flattoo-looks
     stencil-tools
+    flattoo-assist
   ];
   adminPath = lib.makeBinPath [
     py
