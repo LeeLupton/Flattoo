@@ -106,8 +106,8 @@ let
         cores = 2;
         diskSize = 4096;
         resolution = {
-          x = 1600;
-          y = 900;
+          x = 1920;
+          y = 1080;
         };
       };
     };
@@ -154,6 +154,24 @@ let
         m = m or studio
         m.wait_until_succeeds("pgrep -u artist -f xfce4-panel", timeout=600)
         m.sleep(25)
+
+    def scene(m=None):
+        """What a look is photographed with: the wallpaper, the dock, Photos
+        open on a drawing in the middle of the screen (rounded corners and a
+        shadow from the compositor), a notification bubble in the look's
+        colours. Photos is started once and kept across looks; GTK follows
+        the theme live."""
+        m = m or studio
+        rc, _ = m.execute("pgrep -u artist -f ristretto")
+        if rc != 0:
+            bg("ristretto /etc/flattoo/sample-stencil.png", m)
+            wait_window("Image Viewer", m)
+        artist("wmctrl -r 'Image Viewer' -b remove,maximized_vert,maximized_horz", m, check=False)
+        artist("wmctrl -r 'Image Viewer' -e 0,520,140,1100,780", m, check=False)
+        artist("wmctrl -a 'Image Viewer'", m, check=False)
+        m.sleep(2)
+        artist("notify-send -a Flattoo -i document-print -t 20000 'Stencil printed' 'Lotus, 60 mm wide, on the stencil printer.'", m, check=False)
+        m.sleep(3)
 
     def dump(m=None):
         m = m or studio
@@ -216,8 +234,10 @@ pkgs.testers.runNixOSTest {
     ${lib.concatMapStringsSep "\n" (l: ''
       artist("flattoo-look apply ${l}")
       wait_panel()
+      scene()
       shot("look-${l}", ${builtins.toJSON lookCaptions.${l}})
     '') looks}
+    studio.execute("pkill -f ristretto; true")
     artist("flattoo-look apply home")
     wait_panel()
 
