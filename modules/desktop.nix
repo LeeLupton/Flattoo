@@ -100,6 +100,7 @@ in
     ];
   };
   programs.xfconf.enable = true;
+  programs.dconf.enable = true; # GTK4/libadwaita apps keep their settings here; looks set their dark/light mode through it
   services.gvfs.enable = true; # USB sticks, Android phones over MTP, network shares
   services.tumbler.enable = true; # thumbnails in Thunar
   services.udisks2.enable = true;

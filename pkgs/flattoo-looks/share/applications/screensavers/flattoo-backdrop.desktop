@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Flattoo backdrop
+Comment=The current look's wallpaper, softened, behind the lock screen
+Exec=flattoo-showcase backdrop
+TryExec=flattoo-showcase
+StartupNotify=false
+Terminal=false
+Type=Application
+Categories=Screensaver;
+OnlyShowIn=XFCE;
+Hidden=true

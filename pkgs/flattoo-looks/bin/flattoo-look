@@ -87,7 +87,10 @@ LAUNCHERS = {
 
 
 def run(cmd, **kw):
-    return subprocess.run(cmd, text=True, capture_output=True, **kw)
+    try:
+        return subprocess.run(cmd, text=True, capture_output=True, **kw)
+    except OSError as ex:  # a helper that is not installed is a skipped step, not a crash
+        return subprocess.CompletedProcess(cmd, 127, "", str(ex))
 
 
 def xq(channel, prop, *args):
@@ -257,6 +260,7 @@ def apply_live(p, quiet=False, scheduled=False):
     apply_palette(p.get("palette"), p.get("icon_theme"))
     apply_notify(p.get("notify"))
     apply_night_light(p.get("night_light"))
+    apply_gnome(p)
     if "gtk_theme" in p:
         xq_set("xsettings", "/Net/ThemeName", "string", p["gtk_theme"]); say("theme:", p["gtk_theme"])
     if "icon_theme" in p:
@@ -282,6 +286,8 @@ def apply_live(p, quiet=False, scheduled=False):
             xq_set_array("xfwm4", "/general/workspace_names", "string", ws["names"])
     if "wallpaper" in p:
         set_wallpaper(resolve_wallpaper(p["wallpaper"]))
+        make_backdrop(resolve_wallpaper(p["wallpaper"]), p.get("dark", True))
+        run(["flattoo-showcase", "backdrop-saver"])  # the lock screen shows it (unless the shop display is on)
     if "panels" in p:
         apply_panel(p["panels"])
     elif "panel" in p:
@@ -472,6 +478,47 @@ def apply_notify(n):
         xq_set("xfce4-notifyd", "/initial-opacity", "double", f"{float(n['opacity']):.2f}")
     xq_set("xfce4-notifyd", "/do-fadeout", "bool", "true")
     xq_set("xfce4-notifyd", "/do-slideout", "bool", "true" if n.get("slide", True) else "false")
+
+
+def apply_gnome(p):
+    """GTK4 / libadwaita apps (Calendar, Calculator, newer GNOME tools) do not
+    read xsettings: they take theme and dark/light from gsettings. Keep them
+    in step with the look so nothing stays white in a dark look."""
+    if not shutil.which("gsettings"):
+        return
+    dark = p.get("dark")
+    if dark is None:
+        panels = p.get("panels") or [p.get("panel", {})]
+        dark = bool(panels[0].get("dark", True))
+    run(["gsettings", "set", "org.gnome.desktop.interface", "color-scheme", "prefer-dark" if dark else "default"])
+    for key, val in (("gtk-theme", p.get("gtk_theme")), ("icon-theme", p.get("icon_theme")),
+                     ("cursor-theme", p.get("cursor_theme")), ("font-name", p.get("font"))):
+        if val:
+            run(["gsettings", "set", "org.gnome.desktop.interface", key, val])
+
+
+BACKDROP_DIR = os.path.join(CACHE, "flattoo", "backdrop")
+
+
+def make_backdrop(wallpaper, dark=True):
+    """The lock screen's picture: the look's wallpaper, softened and dimmed,
+    in a folder of its own that the flattoo-backdrop screensaver theme shows
+    (xfce4-screensaver's slideshow helper with one image = a still)."""
+    try:
+        from PIL import Image, ImageEnhance, ImageFilter
+    except ImportError:
+        return
+    try:
+        im = Image.open(wallpaper).convert("RGB")
+        im.thumbnail((1920, 1920))
+        im = im.filter(ImageFilter.GaussianBlur(im.width / 60))
+        im = ImageEnhance.Brightness(im).enhance(0.55 if dark else 0.8)
+        os.makedirs(BACKDROP_DIR, exist_ok=True)
+        tmp = os.path.join(BACKDROP_DIR, ".backdrop.tmp.png")
+        im.save(tmp, "PNG", compress_level=3)
+        os.replace(tmp, os.path.join(BACKDROP_DIR, "backdrop.png"))
+    except (OSError, ValueError) as ex:
+        print("backdrop:", ex, file=sys.stderr)
 
 
 def apply_night_light(kelvin):
@@ -953,6 +1000,7 @@ def main(argv=None):
     r = sub.add_parser("restore-files"); r.add_argument("dir")
     t = sub.add_parser("panel-tar"); t.add_argument("name"); t.add_argument("out")
     pc = sub.add_parser("picom-conf", help="print the picom config a look generates"); pc.add_argument("name"); pc.add_argument("--xrender", action="store_true")
+    bd = sub.add_parser("backdrop", help="write the lock-screen picture for a look (what apply does)"); bd.add_argument("name")
     fx = sub.add_parser("effects"); fx.add_argument("state", choices=["on", "off", "status"])
     sc = sub.add_parser("schedule"); sc.add_argument("what", choices=["set", "off", "on", "status", "daemon", "tick", "gui"])
     sc.add_argument("night", nargs="?", help="HH:MM the dark twin comes on (set)")
@@ -963,6 +1011,10 @@ def main(argv=None):
 
     if args.cmd == "gui":
         return gui()
+    if args.cmd == "backdrop":
+        p = load_preset(args.name)
+        make_backdrop(resolve_wallpaper(p["wallpaper"]), p.get("dark", True))
+        print(os.path.join(BACKDROP_DIR, "backdrop.png")); return 0
     if args.cmd == "picom-conf":
         p = load_preset(args.name)
         e = p.get("effects", {})

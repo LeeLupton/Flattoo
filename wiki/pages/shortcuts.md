@@ -12,7 +12,7 @@ questions:
   - where is shut down
 actions: [help]
 menu: []
-shortcuts: ["Super+Space", "Super+Escape", "Super+P", "Super+L", "Super+K", "Super+E", "Print"]
+shortcuts: ["Super+Space", "Super+Escape", "Super+/", "Super+F1", "Super+P", "Super+L", "Super+K", "Super+E", "Print"]
 screenshots: [power-sheet]
 related: [ask-flattoo, print-stencil, layouts, i3]
 ---
@@ -23,6 +23,8 @@ The **Super** key is the one with the window logo, left of the space bar.
 | **Super** | The app grid (Home looks) or the menu (other looks) |
 | **Super + Space** | Ask Flattoo |
 | **Super + Escape** | The power sheet: Lock, Sleep, Restart, Shut down, Log out |
+| **Super + /** | This page |
+| **Super + F1** | Help & How-To |
 | **Super + P** | Print as Stencil |
 | **Super + L** | Layouts |
 | **Super + K** | Krita |

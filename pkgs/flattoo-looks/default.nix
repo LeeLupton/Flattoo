@@ -25,7 +25,8 @@
   i3,
   xvfb-run,
   rofi,
-  glib, # gio: trusted desktop launchers
+  glib, # gio: trusted desktop launchers; gsettings for GTK4 apps
+  gsettings-desktop-schemas, # org.gnome.desktop.interface, what libadwaita apps read
   xrandr,
   xfdesktop,
   runCommand,
@@ -102,9 +103,11 @@ stdenv.mkDerivation (finalAttrs: {
     cp share/layouts/*.json $out/share/flattoo/layouts/
     cp share/applications/*.desktop $out/share/applications/
     cp share/applications/screensavers/*.desktop $out/share/applications/screensavers/
-    substituteInPlace $out/share/applications/screensavers/flattoo-showcase.desktop \
-      --replace-fail 'Exec=flattoo-showcase slideshow' "Exec=$out/bin/flattoo-showcase slideshow" \
-      --replace-fail 'TryExec=flattoo-showcase' "TryExec=$out/bin/flattoo-showcase"
+    for f in $out/share/applications/screensavers/*.desktop; do
+      sed -i -e "s|^Exec=flattoo-showcase|Exec=$out/bin/flattoo-showcase|" \
+             -e "s|^TryExec=flattoo-showcase|TryExec=$out/bin/flattoo-showcase|" $f
+      grep -q "^Exec=$out/bin/flattoo-showcase" $f
+    done
     cp share/polkit-1/actions/*.policy $out/share/polkit-1/actions/
     cp share/rofi/*.rasi $out/share/flattoo/rofi/
     cp share/touchegg/touchegg.conf $out/share/flattoo/touchegg/
@@ -147,7 +150,8 @@ stdenv.mkDerivation (finalAttrs: {
         --replace-quiet '@wallpapers@' "$out/share/backgrounds/flattoo" \
         --replace-quiet '@slideshow@' "${slideshow}"
       sed -i "1s|.*|#!${py}/bin/python3|" $out/bin/$tool
-      wrapProgram $out/bin/$tool --prefix PATH : $out/bin:${runtimePath}
+      wrapProgram $out/bin/$tool --prefix PATH : $out/bin:${runtimePath} \
+        --prefix XDG_DATA_DIRS : ${gsettings-desktop-schemas}/share/gsettings-schemas/${gsettings-desktop-schemas.name}
     done
     for tool in flattoo-lock flattoo-lock-apply flattoo-unlock flattoo-unlock-apply; do
       install -m755 bin/$tool $out/bin/$tool
@@ -268,6 +272,10 @@ stdenv.mkDerivation (finalAttrs: {
           flattoo-look current-name | grep -qx gruvbox
           echo "ok: automatic night look"
 
+          # the lock-screen picture a look writes
+          ! flattoo-showcase backdrop
+          flattoo-look backdrop neon | grep -q backdrop.png
+          test -s $HOME/.cache/flattoo/backdrop/backdrop.png
           # shop display: the newest gallery Portfolio built wins, a folder of pictures otherwise
           ! flattoo-showcase folder
           mkdir -p $HOME/Portfolio/2026-01-02/web $HOME/Portfolio/2026-03-04/web

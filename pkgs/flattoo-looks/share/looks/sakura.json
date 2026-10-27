@@ -184,7 +184,9 @@
     "<Super>p": "stencil-print --gui",
     "<Super>space": "flattoo-copilot",
     "Super_L": "flattoo-apps",
-    "<Super>Escape": "flattoo-power"
+    "<Super>Escape": "flattoo-power",
+    "<Super>slash": "flattoo-wiki open shortcuts",
+    "<Super>F1": "flattoo-wiki"
   },
   "palette": {
     "bg": "#faf4ed",
@@ -208,5 +210,6 @@
     "position": "top-center",
     "opacity": 0.96
   },
-  "night": "sakura-night"
+  "night": "sakura-night",
+  "dark": false
 }

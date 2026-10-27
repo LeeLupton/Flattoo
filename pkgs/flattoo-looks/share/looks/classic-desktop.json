@@ -43,7 +43,9 @@
     "<Super>p": "stencil-print --gui",
     "<Super>space": "flattoo-copilot",
     "Super_L": "xfce4-popup-whiskermenu",
-    "<Super>Escape": "flattoo-power"
+    "<Super>Escape": "flattoo-power",
+    "<Super>slash": "flattoo-wiki open shortcuts",
+    "<Super>F1": "flattoo-wiki"
   },
   "name": "classic-desktop",
   "app_names": "familiar",
@@ -69,5 +71,6 @@
     "position": "bottom-right",
     "opacity": 0.98
   },
-  "night": "studio-dark"
+  "night": "studio-dark",
+  "dark": false
 }

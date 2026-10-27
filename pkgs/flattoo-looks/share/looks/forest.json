@@ -122,7 +122,9 @@
     "<Super>p": "stencil-print --gui",
     "<Super>space": "flattoo-copilot",
     "Super_L": "flattoo-apps",
-    "<Super>Escape": "flattoo-power"
+    "<Super>Escape": "flattoo-power",
+    "<Super>slash": "flattoo-wiki open shortcuts",
+    "<Super>F1": "flattoo-wiki"
   },
   "palette": {
     "bg": "#2d353b",
@@ -164,5 +166,6 @@
       "firefox"
     ],
     "show_labels": true
-  }
+  },
+  "dark": true
 }

@@ -48,7 +48,9 @@
     "<Super>p": "stencil-print --gui",
     "<Super>space": "flattoo-copilot",
     "Super_L": "xfce4-popup-whiskermenu",
-    "<Super>Escape": "flattoo-power"
+    "<Super>Escape": "flattoo-power",
+    "<Super>slash": "flattoo-wiki open shortcuts",
+    "<Super>F1": "flattoo-wiki"
   },
   "name": "paper",
   "app_names": "standard",
@@ -74,5 +76,6 @@
     "position": "top-right",
     "opacity": 0.98
   },
-  "night": "night-session"
+  "night": "night-session",
+  "dark": false
 }

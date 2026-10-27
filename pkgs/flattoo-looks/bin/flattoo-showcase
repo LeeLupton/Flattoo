@@ -220,6 +220,8 @@ def client_gui():
 # ------------------------------------------------------------------ shop display (screensaver)
 
 SAVER_THEME = "screensavers-flattoo-showcase"
+BACKDROP_THEME = "screensavers-flattoo-backdrop"  # the look's wallpaper, softened: the lock screen's picture
+BACKDROP_DIR = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.join(HOME, ".cache")), "flattoo", "backdrop")
 
 
 def display(state, gui=False):
@@ -245,10 +247,20 @@ def display(state, gui=False):
     if state == "off":
         c["enabled"] = False
         save_cfg(c)
-        xq("xfce4-screensaver", "/saver/mode", "int", 0)
-        run(["notify-send", "-a", "Flattoo", "Shop display off", "An idle laptop goes dark again."])
+        backdrop_saver()
+        run(["notify-send", "-a", "Flattoo", "Shop display off", "An idle laptop shows the lock screen again."])
         return 0
     return 2
+
+
+def backdrop_saver():
+    """The idle/lock picture when the shop display is off: the look's
+    softened wallpaper (a plain black screen when no look wrote one yet)."""
+    if os.path.exists(os.path.join(BACKDROP_DIR, "backdrop.png")):
+        xq("xfce4-screensaver", "/saver/mode", "int", 1)
+        xq_array("xfce4-screensaver", "/saver/themes/list", "string", [BACKDROP_THEME])
+    else:
+        xq("xfce4-screensaver", "/saver/mode", "int", 0)
 
 
 def display_gui():
@@ -287,6 +299,14 @@ def slideshow():
     os.execv(SLIDESHOW, [SLIDESHOW, f"--location={folder}", "--background-color=#000000", "--no-stretch"])
 
 
+def backdrop():
+    """The lock screen's picture: the same helper with the one softened
+    wallpaper the current look wrote."""
+    if not os.path.exists(os.path.join(BACKDROP_DIR, "backdrop.png")) or not os.path.exists(SLIDESHOW):
+        return 1
+    os.execv(SLIDESHOW, [SLIDESHOW, f"--location={BACKDROP_DIR}", "--background-color=#000000", "--sort-images"])
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="flattoo-showcase", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -294,6 +314,8 @@ def main(argv=None):
     c = sub.add_parser("client"); c.add_argument("folder", nargs="?")
     d = sub.add_parser("display"); d.add_argument("state", choices=["on", "off", "status", "gui"])
     sub.add_parser("slideshow")
+    sub.add_parser("backdrop")
+    sub.add_parser("backdrop-saver", help="make the lock screen show the look's wallpaper (what a look does on apply)")
     sub.add_parser("folder", help="print the folder that would be shown")
     args = ap.parse_args(argv)
     if args.cmd == "gui":
@@ -304,6 +326,13 @@ def main(argv=None):
         return display_gui() if args.state == "gui" else display(args.state)
     if args.cmd == "slideshow":
         return slideshow()
+    if args.cmd == "backdrop":
+        return backdrop()
+    if args.cmd == "backdrop-saver":
+        if load_cfg().get("enabled") and xq_get("xfce4-screensaver", "/saver/mode") == "1":
+            return 0  # the shop display is on; leave it
+        backdrop_saver()
+        return 0
     if args.cmd == "folder":
         f = portfolio_folder()
         print(f or "")

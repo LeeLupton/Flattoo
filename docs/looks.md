@@ -72,6 +72,16 @@ Beyond theme/icons/panel, a preset can carry:
 - `night_light` — kelvin for a one-shot `redshift -P -O`; a look without it
   resets to neutral, so colour judgement on reference photos is safe by default.
 - `night` — the name of the look's dark twin.
+- `dark` — whether the look is dark. Mirrored into gsettings
+  (`org.gnome.desktop.interface color-scheme`, `gtk-theme`, `icon-theme`,
+  `cursor-theme`, `font-name`) so GTK4/libadwaita apps that ignore xsettings
+  follow the look too (`programs.dconf.enable`).
+
+Applying a look also writes a softened, dimmed copy of its wallpaper to
+`~/.cache/flattoo/backdrop/backdrop.png` and points xfce4-screensaver at the
+`flattoo-backdrop` theme (the slideshow helper with that one picture), so the
+idle and lock screens show the look's wallpaper instead of black. The shop
+display, when on, takes precedence; turning it off returns to the backdrop.
 
 `flattoo-look apply` also records `~/.config/flattoo/current-look`;
 `current-name` prints it, `twin NAME dark|light` resolves the pair.
