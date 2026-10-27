@@ -12,6 +12,10 @@
   </property>
   <property name="lock" type="empty">
     <property name="enabled" type="bool" value="false"/>
+    <property name="embedded-keyboard" type="empty">
+      <property name="enabled" type="bool" value="true"/>
+      <property name="command" type="string" value="onboard --xid"/>
+    </property>
     <property name="saver-activation" type="empty">
       <property name="enabled" type="bool" value="false"/>
     </property>

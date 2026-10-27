@@ -74,6 +74,27 @@ in
           description = "Anthropic model id, or the Ollama model tag when provider = ollama.";
         };
       };
+      voice = {
+        enable = lib.mkEnableOption ''
+          a microphone row on the Ask Flattoo sheet: a few seconds are
+          recorded and transcribed on the laptop with whisper.cpp (nothing
+          leaves the machine), then handled like typed text after an
+          "I heard …, do that?" confirmation. For people who will not type.
+          Downloads a 150 MB speech model into the system closure'';
+        model = lib.mkOption {
+          type = lib.types.path;
+          default = pkgs.fetchurl {
+            url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin";
+            hash = "sha256-oDd5yG3zMjB19eeWyyzlAp8A7Ihp7uP9+4l6/jbG0AI=";
+          };
+          description = "A ggml whisper model (base.en by default: 150 MB, about two seconds per request on a laptop CPU).";
+        };
+        seconds = lib.mkOption {
+          type = lib.types.int;
+          default = 6;
+          description = "How long the microphone listens after the row is tapped.";
+        };
+      };
     };
   };
 
@@ -118,6 +139,15 @@ in
       services.ollama = lib.mkIf (cfg.copilot.llm.provider == "ollama") {
         enable = true;
         loadModels = [ cfg.copilot.llm.model ];
+      };
+    })
+
+    (lib.mkIf (cfg.copilot.enable && cfg.copilot.voice.enable) {
+      environment.systemPackages = [ pkgs.whisper-cpp ];
+      environment.sessionVariables = {
+        FLATTOO_COPILOT_VOICE = "1";
+        FLATTOO_WHISPER_MODEL = toString cfg.copilot.voice.model;
+        FLATTOO_LISTEN_SECONDS = toString cfg.copilot.voice.seconds;
       };
     })
   ];

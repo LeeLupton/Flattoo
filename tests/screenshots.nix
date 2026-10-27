@@ -241,10 +241,14 @@ pkgs.testers.runNixOSTest {
     shot("menu", "The menu (top-left button, or the Super key): every app by category, search box at the top.")
     close_dialogs()
 
-    # Ask Flattoo
+    # Ask Flattoo: the tap sheet first, the text box behind "Type something else"
     bg("flattoo-copilot")
+    wait_window("rofi")
+    shot("ask-flattoo", "Ask Flattoo: the things people ask, as rows to tap. Typing filters them; the last row is a text box.")
+    close_dialogs()
+    bg("flattoo-copilot --typed")
     wait_window("Ask Flattoo")
-    shot("ask-flattoo", "Ask Flattoo: type what you need in plain words.")
+    shot("ask-flattoo-typed", "Behind “Type something else…”: say what you need in plain words. The on-screen keyboard pops up for people who do not use the real one.")
     close_dialogs()
     bg("flattoo-copilot 'something like paint'")
     wait_window("Ask Flattoo")

@@ -32,7 +32,8 @@
       "scan",
       "calibrate",
       "localsend",
-      "firefox"
+      "firefox",
+      "keyboard"
     ]
   },
   "xfwm": {

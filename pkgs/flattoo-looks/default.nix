@@ -44,12 +44,16 @@
   util-linux, # flock
   shellcheck,
   league-gothic, # the wordmark on the boot splash
+  gtk3,
+  gobject-introspection,
+  wrapGAppsHook3,
 }:
 let
   py = python3.withPackages (
     ps: with ps; [
       pillow
       numpy
+      pygobject3 # the client-mode viewer (GTK)
     ]
   );
   runtimePath = lib.makeBinPath [
@@ -88,8 +92,12 @@ stdenv.mkDerivation (finalAttrs: {
 
   nativeBuildInputs = [
     makeWrapper
+    wrapGAppsHook3 # GI_TYPELIB_PATH, pixbuf loaders, GSettings for the GTK viewer
+    gobject-introspection
     py
   ];
+  buildInputs = [ gtk3 ];
+  dontWrapGApps = true; # applied by hand to the one tool that needs it
 
   dontBuild = true;
 
@@ -150,6 +158,8 @@ stdenv.mkDerivation (finalAttrs: {
         --replace-quiet '@wallpapers@' "$out/share/backgrounds/flattoo" \
         --replace-quiet '@slideshow@' "${slideshow}"
       sed -i "1s|.*|#!${py}/bin/python3|" $out/bin/$tool
+      # flattoo-showcase is wrapped in postFixup, once the GTK wrapper args exist
+      [ "$tool" = flattoo-showcase ] && continue
       wrapProgram $out/bin/$tool --prefix PATH : $out/bin:${runtimePath} \
         --prefix XDG_DATA_DIRS : ${gsettings-desktop-schemas}/share/gsettings-schemas/${gsettings-desktop-schemas.name}
     done
@@ -159,6 +169,10 @@ stdenv.mkDerivation (finalAttrs: {
       wrapProgram $out/bin/$tool --prefix PATH : $out/bin:${runtimePath}
     done
     runHook postInstall
+  '';
+
+  postFixup = ''
+    wrapProgram $out/bin/flattoo-showcase --prefix PATH : $out/bin:${runtimePath} "''${gappsWrapperArgs[@]}"
   '';
 
   passthru.tests = {

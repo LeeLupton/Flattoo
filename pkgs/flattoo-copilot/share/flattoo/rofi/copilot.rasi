@@ -1,0 +1,64 @@
+/* Ask Flattoo's tap sheet: the common requests as big rows with icons, two
+   columns, in the middle of the screen. Colours come from the current look
+   (rofi-colors.rasi). Typing still filters; nobody has to. */
+configuration {
+    show-icons: true;
+    hover-select: true;
+    me-select-entry: "";
+    me-accept-entry: "MousePrimary";
+}
+* {
+    background-color: transparent;
+    text-color: #1d1d1f;
+    font: "Inter 14";
+}
+window {
+    location: center;
+    anchor: center;
+    width: 760px;
+    background-color: rgba(245, 245, 250, 0.96);
+    border-radius: 26px;
+    padding: 20px;
+}
+mainbox {
+    spacing: 14px;
+}
+inputbar {
+    children: [ "prompt", "entry" ];
+    background-color: rgba(255, 255, 255, 0.75);
+    border-radius: 14px;
+    padding: 10px 16px;
+    spacing: 10px;
+}
+prompt {
+    font: "Inter Semi-Bold 14";
+}
+entry {
+    placeholder: "tap one, or type";
+    placeholder-color: #8e8e93;
+}
+listview {
+    columns: 2;
+    lines: 10;
+    spacing: 8px;
+    fixed-columns: true;
+    fixed-height: false;
+    scrollbar: false;
+    cycle: false;
+}
+element {
+    orientation: horizontal;
+    padding: 12px 14px;
+    border-radius: 16px;
+    spacing: 14px;
+}
+element selected {
+    background-color: rgba(255, 255, 255, 0.75);
+}
+element-icon {
+    size: 1.7em;
+    vertical-align: 0.5;
+}
+element-text {
+    vertical-align: 0.5;
+}

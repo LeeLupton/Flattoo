@@ -22,6 +22,7 @@ in
     ./locked.nix
     ./copilot.nix
     ./assist.nix
+    ./touch.nix
   ];
 
   options.flattoo = {
@@ -152,6 +153,35 @@ in
         default = true;
         description = "Plymouth with the Flattoo mark: the LUKS passphrase is asked on the splash, no scrolling text.";
       };
+      onScreenKeyboard = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          An on-screen keyboard (onboard) that appears when a text field is
+          tapped, a Keyboard button on the panel, and the same keyboard on
+          the lock and login screens — for people who will not type.
+        '';
+      };
+      fingerprint = mkOption {
+        type = types.bool;
+        default = false;
+        description = ''
+          fprintd: the lock screen, the login screen and sudo accept an
+          enrolled finger (the password still works). Enrol once as the
+          maintainer: sudo fprintd-enroll artist.
+        '';
+      };
+    };
+
+    disk.fido2 = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Unlock the disk at boot by plugging in and touching a FIDO2 key
+        instead of typing the passphrase (which stays as the fallback).
+        Enrol once: sudo systemd-cryptenroll --fido2-device=auto
+        /dev/disk/by-partlabel/disk-main-luks. See docs/install.md.
+      '';
     };
 
     tablet.openTabletDriver = mkEnableOption "OpenTabletDriver for Huion / XP-Pen / Gaomon tablets (replaces the kernel Wacom driver)";

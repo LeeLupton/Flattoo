@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Voice for Ask Flattoo: record a few seconds from the default microphone,
+# transcribe on the laptop with whisper.cpp, print the text. Nothing leaves
+# the machine; no account, no cloud. Needs FLATTOO_WHISPER_MODEL (set by the
+# flattoo.copilot.voice option) and whisper-cli on the PATH.
+set -euo pipefail
+model="${FLATTOO_WHISPER_MODEL:-}"
+seconds="${FLATTOO_LISTEN_SECONDS:-6}"
+if [ -z "$model" ] || [ ! -s "$model" ]; then
+  echo "flattoo-listen: no speech model (flattoo.copilot.voice is off)" >&2
+  exit 2
+fi
+command -v whisper-cli >/dev/null || { echo "flattoo-listen: whisper-cli not installed" >&2; exit 2; }
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+wav="$tmp/say.wav"
+if command -v pw-record >/dev/null; then
+  timeout "$((seconds + 2))" pw-record --rate 16000 --channels 1 --format s16 "$wav" &
+  pid=$!
+  sleep "$seconds"
+  kill -INT "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+elif command -v arecord >/dev/null; then
+  arecord -q -f S16_LE -r 16000 -c 1 -d "$seconds" "$wav"
+else
+  echo "flattoo-listen: no recorder (pw-record or arecord)" >&2
+  exit 2
+fi
+[ -s "$wav" ] || { echo "flattoo-listen: nothing recorded" >&2; exit 1; }
+text=$(whisper-cli -m "$model" -f "$wav" -nt -np -t "$(nproc)" -l en 2>/dev/null | tr -s '[:space:]' ' ' | sed -e 's/^ *//' -e 's/ *$//' -e 's/\[[^]]*\]//g' -e 's/([^)]*)//g')
+# whisper writes "[BLANK_AUDIO]" or "(silence)" for nothing; those are gone now
+[ -n "$text" ] || exit 1
+printf '%s\n' "$text"

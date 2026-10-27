@@ -83,6 +83,7 @@ LAUNCHERS = {
     "gpick": "gpick.desktop",
     "client": "flattoo-showcase.desktop",  # hand the laptop to a client: portfolio, then lock
     "powersheet": "flattoo-power.desktop",  # the big Lock / Sleep / Restart / Shut down sheet
+    "keyboard": "flattoo-keyboard.desktop",  # show/hide the on-screen keyboard (modules/touch.nix)
 }
 
 
@@ -925,7 +926,10 @@ def gui():
         run(["notify-send", "-a", "Flattoo", "Window effects " + ("on" if on else "off"), "Looks → Window effects toggles them again."])
         return 0
     if pick == "__save__":
-        r = run(["zenity", "--entry", "--title=Save look", "--text=Name for this look:"])
+        n = 1
+        while os.path.exists(os.path.join(USER_LOOKS, f"my-look-{n}.json")):
+            n += 1
+        r = run(["zenity", "--entry", "--title=Save look", "--text=Name for this look (or keep the suggestion):", f"--entry-text=My look {n}"])
         if r.returncode != 0 or not r.stdout.strip():
             return 1
         name = re.sub(r"[^A-Za-z0-9 _-]", "", r.stdout.strip()).strip().replace(" ", "-").lower()
@@ -963,10 +967,13 @@ def set_effects(on):
 
 def schedule_gui():
     s = load_schedule()
+    evenings = "|".join(f"{h:02d}:{m:02d}" for h in range(16, 24) for m in (0, 30))
+    mornings = "|".join(f"{h:02d}:{m:02d}" for h in range(4, 12) for m in (0, 30))
     r = run(["zenity", "--forms", "--title=Automatic night look", "--width=460",
-             "--text=In the evening the desktop switches to this look's dark twin (Home → Home Dark, Sakura → Sakura Night…). Looks without a twin just get a warmer screen.\nTimes as HH:MM, 24-hour.",
+             "--text=In the evening the desktop switches to this look's dark twin (Home → Home Dark, Sakura → Sakura Night…). Looks without a twin just get a warmer screen.",
              "--add-combo=Automatic night look", "--combo-values=on|off",
-             "--add-entry=Dark from", "--add-entry=Back to the day look at", "--separator=|"])
+             f"--add-combo=Dark from (now {s['night']})", f"--combo-values={evenings}",
+             f"--add-combo=Back to the day look at (now {s['day']})", f"--combo-values={mornings}", "--separator=|"])
     if r.returncode != 0:
         return 1
     parts = (r.stdout.strip().split("|") + ["", "", ""])[:3]

@@ -32,7 +32,8 @@
       "sep",
       "files",
       "calibrate",
-      "firefox"
+      "firefox",
+      "keyboard"
     ]
   },
   "xfwm": {

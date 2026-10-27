@@ -92,6 +92,12 @@ CASES = [
     ("show my work when idle", "shop-display", {}),
     ("turn off", "power", None),
     ("make the text bigger", "look", None),
+    # every row of the tap sheet lands where it says
+    ("change the look", "look", {}),
+    ("shop display", "shop-display", {}),
+    ("my profile", "profile", None),
+    ("make a portfolio", "portfolio", None),
+    ("wifi", "wifi", None),
 ]
 
 env = dict(os.environ, HOME=os.environ.get("TMPDIR", "/tmp"), XDG_DATA_DIRS="/nonexistent")

@@ -2,9 +2,10 @@
 """The laptop as a shop display, and handing it to a client.
 
   flattoo-showcase gui                menu entry "Show a client": confirm, then client mode
-  flattoo-showcase client [FOLDER]    full-screen slideshow of the portfolio. Esc ends it
-                                      and LOCKS the laptop, so a client can browse and
-                                      nothing else. Notifications are muted meanwhile.
+  flattoo-showcase client [FOLDER]    full-screen slideshow of the portfolio: tap or swipe
+                                      to move on, a Done button (or Esc) ends it and LOCKS
+                                      the laptop, so a client can browse and nothing else.
+                                      Notifications are muted meanwhile.
   flattoo-showcase display on|off     shop display: when the laptop sits idle, the
                                       screensaver shows the portfolio instead of going black
   flattoo-showcase display status|gui
@@ -20,7 +21,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 
 HOME = os.path.expanduser("~")
 CFG = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".config")), "flattoo")
@@ -101,70 +101,6 @@ def no_gallery(gui):
 
 # ------------------------------------------------------------------ client mode
 
-FEH_KEYS = """# flattoo client mode: browse only. Everything that could change or
-# remove a picture is unbound; Escape ends the session (and locks the laptop).
-quit Escape q
-next_img Right Down space Page_Down
-prev_img Left Up BackSpace Page_Up
-zoom_in plus KP_Add
-zoom_out minus KP_Subtract
-zoom_default 0
-zoom_fit slash
-toggle_fullscreen
-toggle_pause p
-delete
-remove
-save_image
-save_filelist
-action_0
-action_1
-action_2
-action_3
-action_4
-action_5
-action_6
-action_7
-action_8
-action_9
-toggle_filenames
-toggle_info
-toggle_menu
-toggle_caption
-toggle_exif
-toggle_keep_vp
-toggle_auto_zoom
-toggle_aliasing
-toggle_fixed_geometry
-reload_image
-reload_minus
-reload_plus
-orient_1
-orient_3
-flip
-mirror
-jump_first
-jump_last
-jump_fwd
-jump_back
-jump_random
-render
-size_to_image
-"""
-
-FEH_BUTTONS = """# flattoo client mode: tap = next, right button = back, wheel = zoom
-next_img 1
-prev_img 3
-zoom_in 4
-zoom_out 5
-pan 2
-menu
-blur
-rotate
-reload
-zoom
-"""
-
-
 def lock_screen():
     for cmd in (["xflock4"], ["xfce4-screensaver-command", "--lock"], ["loginctl", "lock-session"]):
         if shutil.which(cmd[0]):
@@ -173,32 +109,150 @@ def lock_screen():
     return False
 
 
+VIEWER_CSS = b"""
+window { background-color: #000000; }
+.done { background: rgba(255, 255, 255, 0.16); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: 999px; padding: 14px 26px; font-size: 18px; font-weight: 600; margin: 22px; }
+.done:hover, .done:active { background: rgba(255, 255, 255, 0.32); }
+.counter { color: rgba(255, 255, 255, 0.75); font-size: 16px; margin: 22px; background: rgba(0, 0, 0, 0.35);
+           border-radius: 999px; padding: 6px 16px; }
+.arrow { background: rgba(0, 0, 0, 0); color: rgba(255, 255, 255, 0.0); border: none; }
+"""
+
+
+def client_viewer(files):
+    """The slideshow a client holds: full screen, black, one piece at a time.
+    Tap or swipe anywhere to move on (the left edge goes back), pieces
+    advance by themselves every 8 s, a round Done button in the corner ends
+    it. No menus, no file names, nothing else reachable. Returns when done."""
+    import gi
+    gi.require_version("Gtk", "3.0")
+    gi.require_version("Gdk", "3.0")
+    gi.require_version("GdkPixbuf", "2.0")
+    from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
+
+    css = Gtk.CssProvider()
+    css.load_from_data(VIEWER_CSS)
+    Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+    win = Gtk.Window(title="Flattoo — showing your work")
+    win.set_decorated(False)
+    win.set_keep_above(True)
+    win.set_skip_taskbar_hint(True)
+    win.set_skip_pager_hint(True)
+    overlay = Gtk.Overlay()
+    win.add(overlay)
+    image = Gtk.Image()
+    box = Gtk.EventBox()  # the image has no window of its own; taps and swipes land here
+    box.add(image)
+    overlay.add(box)
+
+    state = {"i": 0, "timer": None, "size": (0, 0), "cache": {}}
+
+    def pixbuf(i, w, h):
+        key = (i, w, h)
+        if key not in state["cache"]:
+            try:
+                pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(files[i], w, h, True)
+            except GLib.Error:
+                pb = None
+            state["cache"] = {key: pb}  # one at a time; the files are big
+        return state["cache"][key]
+
+    def show(i):
+        state["i"] = i % len(files)
+        w, h = state["size"]
+        if w > 0 and h > 0:
+            pb = pixbuf(state["i"], w, h)
+            if pb:
+                image.set_from_pixbuf(pb)
+        counter.set_text(f"{state['i'] + 1} / {len(files)}")
+        arm()
+
+    def tick():
+        state["timer"] = None
+        show(state["i"] + 1)
+        return False
+
+    def arm():
+        if state["timer"]:
+            GLib.source_remove(state["timer"])
+        state["timer"] = GLib.timeout_add_seconds(8, tick)
+
+    def on_size(_w, alloc):
+        if (alloc.width, alloc.height) != state["size"]:
+            state["size"] = (alloc.width, alloc.height)
+            show(state["i"])
+
+    def done(*_a):
+        if state["timer"]:
+            GLib.source_remove(state["timer"])
+            state["timer"] = None
+        Gtk.main_quit()
+
+    # tap zones: the left fifth goes back, the rest goes on
+    def on_press(_g, n_press, x, _y):
+        if n_press >= 1:
+            show(state["i"] - 1 if x < state["size"][0] / 5 else state["i"] + 1)
+
+    click = Gtk.GestureMultiPress.new(box)
+    click.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+    click.connect("released", on_press)
+    swipe = Gtk.GestureSwipe.new(box)
+    swipe.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+    swipe.connect("swipe", lambda _g, vx, _vy: show(state["i"] + (1 if vx < 0 else -1)) if abs(vx) > 200 else None)
+    state["gestures"] = (click, swipe)  # keep them alive
+
+    done_btn = Gtk.Button(label="Done")
+    done_btn.get_style_context().add_class("done")
+    done_btn.set_halign(Gtk.Align.END)
+    done_btn.set_valign(Gtk.Align.START)
+    done_btn.connect("clicked", done)
+    overlay.add_overlay(done_btn)
+    counter = Gtk.Label()
+    counter.get_style_context().add_class("counter")
+    counter.set_halign(Gtk.Align.CENTER)
+    counter.set_valign(Gtk.Align.END)
+    overlay.add_overlay(counter)
+
+    def on_key(_w, ev):
+        k = Gdk.keyval_name(ev.keyval) or ""
+        if k == "Escape":
+            done()
+        elif k in ("Right", "space", "Down", "Page_Down"):
+            show(state["i"] + 1)
+        elif k in ("Left", "BackSpace", "Up", "Page_Up"):
+            show(state["i"] - 1)
+        return True  # nothing else reaches anything
+
+    win.connect("key-press-event", on_key)
+    win.connect("delete-event", done)
+    win.connect("size-allocate", on_size)
+    win.set_default_size(1280, 800)
+    win.show_all()
+    win.fullscreen()
+    win.present()
+    try:
+        win.get_window().set_cursor(Gdk.Cursor.new_from_name(Gdk.Display.get_default(), "none"))
+    except Exception:  # noqa: BLE001 — a cursor is cosmetic
+        pass
+    Gtk.main()
+
+
 def client(folder, gui):
     folder = portfolio_folder(folder)
     if not folder:
         return no_gallery(gui)
-    if not shutil.which("feh"):
-        print("feh is not installed", file=sys.stderr)
-        return 1
+    files = images_in(folder)
     dnd_before = xq_get("xfce4-notifyd", "/do-not-disturb")
     xq("xfce4-notifyd", "/do-not-disturb", "bool", "true")
-    with tempfile.TemporaryDirectory(prefix="flattoo-client-") as tmp:
-        os.makedirs(os.path.join(tmp, "feh"))
-        with open(os.path.join(tmp, "feh", "keys"), "w") as f:
-            f.write(FEH_KEYS)
-        with open(os.path.join(tmp, "feh", "buttons"), "w") as f:
-            f.write(FEH_BUTTONS)
-        env = dict(os.environ, XDG_CONFIG_HOME=tmp)
-        run(["notify-send", "-a", "Flattoo", "-t", "2500", "Showing your work", "Esc ends it and locks the laptop."])
-        try:
-            subprocess.run(["feh", "--fullscreen", "--auto-zoom", "--hide-pointer", "--borderless", "--no-menus",
-                            "--image-bg", "black", "--slideshow-delay", "8", "--quiet",
-                            "--sort", "name", "--title", "Flattoo", folder], env=env)
-        finally:
-            if dnd_before in ("true", "false"):
-                xq("xfce4-notifyd", "/do-not-disturb", "bool", dnd_before)
-            else:
-                xq("xfce4-notifyd", "/do-not-disturb", "bool", "false")
+    try:
+        client_viewer(files)
+    finally:
+        if dnd_before in ("true", "false"):
+            xq("xfce4-notifyd", "/do-not-disturb", "bool", dnd_before)
+        else:
+            xq("xfce4-notifyd", "/do-not-disturb", "bool", "false")
     lock_screen()
     return 0
 
@@ -209,9 +263,9 @@ def client_gui():
         return no_gallery(True)
     n = len(images_in(folder))
     r = zenity("--question", "--title=Show a client", "--width=500", "--ok-label=Show my work", "--cancel-label=Cancel",
-               f"--text=<b>{n} pieces</b> from {folder.replace(HOME, '~')} fill the screen, one tap goes to the next.\n\n"
-               "When the client is done, <b>Esc</b> ends it and the laptop <b>locks</b> — your password brings the desktop back. "
-               "Notifications stay quiet meanwhile.")
+               f"--text=<b>{n} pieces</b> from {folder.replace(HOME, '~')} fill the screen; a tap or a swipe goes to the next one.\n\n"
+               "When the client is done, the <b>Done</b> button in the corner (or Esc) ends it and the laptop <b>locks</b> — "
+               "your password brings the desktop back. Notifications stay quiet meanwhile.")
     if r.returncode != 0:
         return 1
     return client(folder, True)

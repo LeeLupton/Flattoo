@@ -34,7 +34,8 @@
       "files",
       "scan",
       "calibrate",
-      "firefox"
+      "firefox",
+      "keyboard"
     ]
   },
   "xfwm": {

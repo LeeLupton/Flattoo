@@ -143,6 +143,17 @@
               flattoo.look.bundle = ./tests/look-bundle;
             }
           ]).config.system.build.toplevel;
+        # Everything for the person who will not type: voice, fingerprint,
+        # the FIDO2 disk key (stage-1 plumbing), the on-screen keyboard.
+        touch-eval =
+          (mkHost [
+            ./hosts/shop-laptop
+            {
+              flattoo.copilot.voice.enable = true;
+              flattoo.desktop.fingerprint = true;
+              flattoo.disk.fido2 = true;
+            }
+          ]).config.system.build.toplevel;
       };
 
       formatter.${system} = pkgs.nixfmt;

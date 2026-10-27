@@ -28,7 +28,8 @@
       "krita",
       "scan",
       "calibrate",
-      "firefox"
+      "firefox",
+      "keyboard"
     ]
   },
   "xfwm": {

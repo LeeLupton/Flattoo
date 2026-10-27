@@ -30,6 +30,7 @@ import time
 import urllib.request
 
 CATALOG_PATH = "@catalog@"
+SHARE = os.path.dirname(CATALOG_PATH)  # …/share/flattoo
 STATE_DIR = os.path.join(os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")), "flattoo")
 LOG = os.path.join(STATE_DIR, "copilot.log")
 APPS_NIX = "/etc/nixos/hosts/{host}/apps.nix"
@@ -96,6 +97,31 @@ SYNONYMS = {
     "exposure": ["exposure", "more clients", "reviews", "google listing", "google business", "promote", "promotion", "reputation", "marketing", "followers", "get found", "get noticed"],
     "help": ["help", "what can you do", "what do you do"],
 }
+
+# The tap sheet: Ask Flattoo opens as a list of the things people actually
+# ask, big rows with icons, no typing (the last row is the text box). Each
+# row is a plain request fed through the same understanding as typed text.
+SHEET = [
+    ("Fix the stencil printer", "printer", "the printer isn't working"),
+    ("Print a stencil", "document-print", "print a stencil"),
+    ("Show a client my work", "x-office-presentation", "show a client my work"),
+    ("__mode__", "", ""),  # Dark mode / Light mode, whichever applies
+    ("Change the look", "preferences-desktop-theme", "change the look"),
+    ("Add an app", "system-software-install", "__add_app__"),
+    ("Update now", "system-software-update", "update now"),
+    ("Free up space", "drive-harddisk", "free up space"),
+    ("Wi-Fi", "network-wireless", "wifi"),
+    ("Bluetooth", "preferences-system-bluetooth", "bluetooth"),
+    ("Battery", "battery", "battery"),
+    ("Portfolio", "folder-pictures", "make a portfolio"),
+    ("My profile", "x-office-address-book", "my profile"),
+    ("Shop display", "preferences-desktop-screensaver", "shop display"),
+    ("Night look", "weather-clear-night", "night look settings"),
+    ("Help & How-To", "help-browser", "__help__"),
+    ("Lock, sleep, turn off", "system-shutdown", "turn off"),
+    ("Say it", "audio-input-microphone", "__voice__"),
+    ("Type something else…", "input-keyboard", "__type__"),
+]
 
 # Phrasings that ask to be shown or told something: the wiki answers those.
 LEARN_WORDS = ["how do i", "how to", "how can i", "what is", "what does", "what are", "show me", "explain", "teach",
@@ -706,6 +732,42 @@ def do_night_look(args):
     spawn(["flattoo-look", "schedule", "gui"]); return "Opening the automatic night look settings.", None
 
 
+def do_add_app(cat, ui):
+    """Every catalog app that is not installed, as a list to tap: name, what
+    it is for, and whether it fits this laptop. Picking one installs it (after
+    the usual confirmation)."""
+    m = machine()
+    rows = []
+    for e in sorted(cat, key=lambda x: (x.get("category", ""), x["name"])):
+        if is_installed(e):
+            continue
+        note = fit_note(e, m)
+        rows += [e["pkg"], f"{e['name']}  ·  {e.get('category', '')}", e["blurb"][:90] + (f"  (note: {note})" if note else "")]
+    if not rows:
+        ui.say("Everything in the catalog is already installed."); return 0
+    pick = ui.pick("Tap an app to install it", rows, "")
+    if not pick:
+        return 1
+    msg, follow = do_install(pick, cat, ui)
+    ui.say(msg, follow)
+    return 0
+
+
+def listen(ui):
+    """Voice: flattoo-listen records a few seconds and transcribes locally
+    (whisper.cpp); the text goes through the same understanding as typing."""
+    ui.progress_start("Listening… say what you need")
+    r = run(["flattoo-listen"])
+    ui.progress_end()
+    text = r.stdout.strip()
+    if r.returncode != 0 or not text:
+        ui.say("I did not catch that. Tap the row again and speak after the window opens, or type it.")
+        return None
+    if ui.gui and not ui.confirm(f"I heard:\n\n“{text}”\n\nDo that?", "Yes"):
+        return None
+    return text
+
+
 def do_installed(cat):
     base = [e["name"] for e in cat if e.get("default")]
     extra = [next((e["name"] for e in cat if e["pkg"] == p), p) for p in extra_apps()]
@@ -746,12 +808,38 @@ class UI:
         self.dry = dry_run
         self._prog = None
 
-    def ask(self):
+    def ask(self, sheet=True):
         if self.gui:
+            if sheet and shutil.which("rofi"):
+                pick = self.sheet()
+                if pick != "__type__":
+                    return pick
             r = run(["zenity", "--entry", "--title=Ask Flattoo", "--width=520",
                      "--text=What do you need? (\"something like Paint\", \"fix the printer\", \"update now\", \"free up space\"…)"])
             return r.stdout.strip() if r.returncode == 0 else None
         return input("What do you need? ").strip()
+
+    def sheet(self):
+        """The tap sheet (rofi, the look's colours). Returns the request text,
+        a __marker__ for the special rows, or None when dismissed."""
+        rows = []
+        mode = run(["flattoo-look", "current-name"]).stdout.strip()
+        dark = mode and run(["flattoo-look", "twin", mode, "light"]).stdout.strip()
+        voice = os.environ.get("FLATTOO_COPILOT_VOICE") == "1" and shutil.which("flattoo-listen")
+        for label, icon, text in SHEET:
+            if label == "__mode__":
+                label, icon, text = ("Light mode", "weather-clear", "light mode") if dark else ("Dark mode", "weather-clear-night", "dark mode")
+            if text == "__voice__" and not voice:
+                continue
+            rows.append((label, icon, text))
+        colors = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")), "flattoo", "rofi-colors.rasi")
+        extra = ["-theme-str", open(colors).read()] if os.path.exists(colors) else []
+        theme = os.path.join(SHARE, "rofi", "copilot.rasi")
+        r = subprocess.run(["rofi", "-dmenu", "-i", "-no-custom", "-p", "Ask Flattoo", "-theme", theme, *extra, "-show-icons",
+                            "-format", "i"], input="".join(f"{l}\0icon\x1f{i}\n" for l, i, _ in rows), text=True, capture_output=True)
+        if r.returncode != 0 or not r.stdout.strip().isdigit():
+            return None
+        return rows[int(r.stdout.strip())][2]
 
     def confirm(self, text, ok="OK"):
         if self.dry:
@@ -850,15 +938,24 @@ def main(argv=None):
     ap.add_argument("--dry-run", action="store_true", help="print the chosen action, change nothing")
     ap.add_argument("--provider", default=os.environ.get("FLATTOO_COPILOT_PROVIDER", "none"), choices=["none", "anthropic", "ollama"])
     ap.add_argument("--no-gui", action="store_true")
+    ap.add_argument("--typed", action="store_true", help="skip the tap sheet, open the text box")
     ap.add_argument("--list-actions", action="store_true", help="print the action allowlist as JSON")
     args = ap.parse_args(argv)
     if args.list_actions:
         print(json.dumps(list(ACTIONS)))
         return 0
     ui = UI(have_gui() and not args.no_gui and not args.dry_run, dry_run=args.dry_run)
-    text = " ".join(args.request).strip() or ui.ask()
+    text = " ".join(args.request).strip() or ui.ask(sheet=not args.typed)
     if not text:
         return 1
+    if text == "__help__":
+        spawn(["flattoo-wiki", "gui"]); return 0
+    if text == "__add_app__":
+        return do_add_app(catalog(), ui)
+    if text == "__voice__":
+        text = listen(ui)
+        if not text:
+            return 1
     action, a = handle(text, ui, args.provider)
     if args.dry_run:
         print(json.dumps({"action": action, "args": a}))

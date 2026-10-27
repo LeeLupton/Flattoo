@@ -30,6 +30,7 @@
         "tray",
         "volume",
         "power",
+        "keyboard",
         "powersheet"
       ],
       "clock": "%-I:%M"

@@ -32,11 +32,13 @@
   flattoo-looks,
   stencil-tools,
   flattoo-assist,
+  rofi, # the tap sheet
 }:
 let
   py = python3;
   runtimePath = lib.makeBinPath [
     zenity
+    rofi
     xfce4-panel
     xfce4-session
     xfce4-settings
@@ -85,6 +87,16 @@ stdenv.mkDerivation (finalAttrs: {
     cp share/polkit-1/actions/*.policy $out/share/polkit-1/actions/
 
     install -m755 bin/flattoo-copilot $out/bin/flattoo-copilot
+    mkdir -p $out/share/flattoo/rofi
+    cp share/flattoo/rofi/*.rasi $out/share/flattoo/rofi/
+    install -m755 bin/flattoo-listen $out/bin/flattoo-listen
+    patchShebangs $out/bin/flattoo-listen
+    wrapProgram $out/bin/flattoo-listen --prefix PATH : ${
+      lib.makeBinPath [
+        coreutils
+        gnused
+      ]
+    }
     substituteInPlace $out/bin/flattoo-copilot --replace-fail '@catalog@' "$out/share/flattoo/catalog.json"
     sed -i "1s|.*|#!${py}/bin/python3|" $out/bin/flattoo-copilot
     wrapProgram $out/bin/flattoo-copilot --prefix PATH : ${runtimePath}
@@ -126,6 +138,7 @@ stdenv.mkDerivation (finalAttrs: {
           }
           ''
             shellcheck -s bash -e SC1091 ${./bin/flattoo-admin}
+            shellcheck -s bash ${./bin/flattoo-listen}
             python3 -I - ${finalAttrs.finalPackage}/share/flattoo/catalog.json <<'PY'
             import json, sys
             cat = json.load(open(sys.argv[1]))

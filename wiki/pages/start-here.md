@@ -13,7 +13,7 @@ questions:
 actions: [help]
 menu: []
 screenshots: [look-home, apps-grid, menu]
-related: [ask-flattoo, looks, show-client, draw, print-stencil]
+related: [ask-flattoo, no-keyboard, looks, show-client, draw, print-stencil]
 ---
 ## Turning it on
 
@@ -28,7 +28,7 @@ Close the lid to put it to sleep. Open the lid, type the passphrase, carry on wh
 It works like a phone. The icons on the screen open apps with one tap. The **dock** along the bottom has the ones you use most — the app grid, Files, Photos, Krita, Firefox, Ask Flattoo — and whatever is open. The strip along the top shows the time, Wi-Fi, sound and battery, and the power button at the right end (Lock, Sleep, Restart, Shut down).
 
 - **The grid button** (or the Super key, the one with the window logo) shows every app as icons. Type a few letters to find one.
-- **Ask Flattoo** — the speech bubble. Type what you need in plain words. See [Ask Flattoo](ask-flattoo.html).
+- **Ask Flattoo** — the speech bubble. Tap what you need from the list, or say it in plain words. See [Ask Flattoo](ask-flattoo.html).
 - **Krita, MyPaint, Inkscape** — drawing. See [Drawing](draw.html).
 - **Files**, **Photos**, **Scanner**, **Print Stencil**, **Calibration**, **LocalSend**, **Firefox**.
 
