@@ -282,16 +282,24 @@ stdenv.mkDerivation (finalAttrs: {
           echo '<?xml version="1.0"?><channel name="xsettings" version="1.0"><property name="Net" type="empty"><property name="ThemeName" type="string" value="Arc-Dark"/></property></channel>' > $HOME/.config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml
           echo '[Desktop Entry]' > $HOME/.config/xfce4/panel/launcher-3/krita.desktop
           echo '{"name":"mine","windows":[{"app":"krita"}]}' > $HOME/.config/flattoo/layouts/mine.json
+          mkdir -p $HOME/.local/share/themes/Flattoo/xfce-notify-4.0
+          echo '#XfceNotifyWindow { color: #123456; }' > $HOME/.local/share/themes/Flattoo/xfce-notify-4.0/gtk.css
+          echo 'picom' > $HOME/.config/flattoo/compositor
           flattoo-look export $TMPDIR/bundle >/dev/null
           test -f $TMPDIR/bundle/xfce-perchannel-xml/xsettings.xml
           test -f $TMPDIR/bundle/panel/launcher-3/krita.desktop
           test -f $TMPDIR/bundle/config/flattoo/layouts/mine.json
+          test -f $TMPDIR/bundle/config/flattoo/compositor
+          test -f $TMPDIR/bundle/data/themes/Flattoo/xfce-notify-4.0/gtk.css
           test -f $TMPDIR/bundle/MANIFEST
           export HOME=$TMPDIR/home2; mkdir -p $HOME
           flattoo-look restore-files $TMPDIR/bundle
           grep -q Arc-Dark $HOME/.config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml
           test -f $HOME/.config/xfce4/panel/launcher-3/krita.desktop
           test -f $HOME/.config/flattoo/layouts/mine.json
+          grep -q picom $HOME/.config/flattoo/compositor
+          grep -q 123456 $HOME/.local/share/themes/Flattoo/xfce-notify-4.0/gtk.css
+          grep -q 123456 $HOME/.themes/Flattoo/xfce-notify-4.0/gtk.css
           echo "ok: presets, layouts, export/restore"
           touch $out
         '';

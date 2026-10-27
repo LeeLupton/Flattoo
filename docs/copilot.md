@@ -21,9 +21,13 @@ or the "Ask Flattoo" menu entry. Type what you want in plain words:
 | *running out of space* / *free up space* | Shows free space, offers to remove old system versions (keeps two weeks for rollback). |
 | *wifi* / *bluetooth* / *battery* | Status and the matching settings window. |
 | *send photos from my phone* | LocalSend. |
-| *turn off* / *restart* / *log out* | The shut-down dialog. |
+| *turn off* / *restart* / *log out* | The power sheet (Lock, Sleep, Restart, Shut down, Log out). |
 | *screen too dark* / *second screen* | Display settings (and where the brightness keys are). |
-| *dark mode* / *bigger text* / *theme* | Opens **Looks**. |
+| *the neon look* / *sakura* / *dark mode* / *light mode* | Applies that look, or the current look's dark/light twin; *bigger text* / *theme* opens **Looks**. |
+| *dark mode at 9pm* / *night look from 20:30 to 7* / *stop the automatic night look* | The automatic night look, on with those times or off. |
+| *effects off* / *the desktop feels slow* / *turn off the animations* | Window effects (picom) off, on, or toggled. |
+| *show a client my work* / *hand them the laptop* | **Show a Client**: the portfolio fills the screen, Esc locks the laptop. |
+| *shop display on* / *turn off the screensaver* | The portfolio as the idle screen, on or off. |
 | *side by side* / *layout* | Opens **Layouts**. |
 | *lock this setup* | Opens **Lock This Setup**. |
 | *how do I scan a sketch* / *what is the lock screen password* / *where did my file go* | Opens the matching page of **Help & How-To** ([docs/wiki.md](wiki.md)); several close pages → a list to pick from. |
@@ -41,11 +45,15 @@ actions with a natural-language front end:
 * **Allowlist, not interpretation.** A request becomes exactly one of
   twenty-odd actions (`install`, `remove`, `open`, `panel`, `suggest`,
   `update`, `update-status`, `printer-*`, `print`, `disk`, `wifi`,
-  `bluetooth`, `battery`, `power`, `display`, `look`, `layout`, `lock`,
-  `installed`, `portfolio`, `profile`, `profile-skill`, `exposure`,
-  `learn`, `help`). `learn` opens a wiki page; its page id is validated
-  against the wiki index. `profile-skill` takes one sanitized string and
-  asks before adding it ([docs/assist.md](assist.md)).
+  `bluetooth`, `battery`, `power`, `display`, `look`, `night-look`,
+  `effects`, `client`, `shop-display`, `layout`, `lock`, `installed`,
+  `portfolio`, `profile`, `profile-skill`, `exposure`, `learn`, `help`).
+  `learn` opens a wiki page; its page id is validated against the wiki
+  index. `profile-skill` takes one sanitized string and asks before adding
+  it ([docs/assist.md](assist.md)). `look` takes a preset name checked
+  against `flattoo-look list` or `dark`/`light`; `night-look`,
+  `effects` and `shop-display` take `on`/`off` and, for the schedule,
+  two `HH:MM` values — anything else is dropped.
   There is no action that takes a command string. `rm -rf /` is answered
   with the help text.
 * **Catalog-only installs.** `pkgs/flattoo-copilot/share/flattoo/catalog.json`

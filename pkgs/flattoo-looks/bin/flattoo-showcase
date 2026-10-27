@@ -41,9 +41,11 @@ def zenity(*args):
     return run(["zenity", *args])
 
 
-def xq(channel, prop, typ, *values):
-    if len(values) == 1:
-        return run(["xfconf-query", "-c", channel, "-p", prop, "-n", "-t", typ, "-s", str(values[0])]).returncode == 0
+def xq(channel, prop, typ, value):
+    return run(["xfconf-query", "-c", channel, "-p", prop, "-n", "-t", typ, "-s", str(value)]).returncode == 0
+
+
+def xq_array(channel, prop, typ, values):
     cmd = ["xfconf-query", "-c", channel, "-p", prop, "-n", "-a"]
     for v in values:
         cmd += ["-t", typ, "-s", str(v)]
@@ -234,8 +236,8 @@ def display(state, gui=False):
         c["enabled"] = True
         c.setdefault("folder", folder)
         save_cfg(c)
-        xq("xfce4-screensaver", "/saver/mode", "int", 1)
-        xq("xfce4-screensaver", "/saver/themes", "string", SAVER_THEME)
+        xq("xfce4-screensaver", "/saver/mode", "int", 1)  # 0 blank, 1 one theme, 2 random
+        xq_array("xfce4-screensaver", "/saver/themes/list", "string", [SAVER_THEME])
         xq("xfce4-screensaver", "/saver/enabled", "bool", "true")
         xq("xfce4-screensaver", "/saver/idle-activation/enabled", "bool", "true")
         run(["notify-send", "-a", "Flattoo", "Shop display on", "When the laptop sits idle it shows your work. A tap brings the desktop back."])

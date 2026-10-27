@@ -442,13 +442,20 @@ def apply_palette(pal, icon_theme=None):
         return
     c = dict(PALETTE_DEFAULTS, **pal)
     c["icon_theme"] = icon_theme or xq("xsettings", "/Net/IconThemeName").stdout.strip() or "Adwaita"
-    d = os.path.join(USER_THEMES, "Flattoo", "xfce-notify-4.0")
-    os.makedirs(d, exist_ok=True)
-    with open(os.path.join(d, "gtk.css"), "w") as f:
-        f.write(NOTIFY_CSS.format(**c))
+    write_notify_theme(NOTIFY_CSS.format(**c))
     os.makedirs(FLATTOO_CFG, exist_ok=True)
     with open(os.path.join(FLATTOO_CFG, "rofi-colors.rasi"), "w") as f:
         f.write(ROFI_CSS.format(**c))
+
+
+def write_notify_theme(css):
+    """xfce4-notifyd looks in ~/.themes and the XDG data dirs; write both so
+    the bubbles follow the look wherever libxfce4util decides to look."""
+    for base in (USER_THEMES, os.path.join(HOME, ".themes")):
+        d = os.path.join(base, "Flattoo", "xfce-notify-4.0")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "gtk.css"), "w") as f:
+            f.write(css)
 
 
 def apply_notify(n):
@@ -582,7 +589,9 @@ def schedule_tick(now_minutes=None, dry=False):
 
 def schedule_daemon():
     """Runs for the session (autostart): checks the clock every 30 s. Does
-    nothing until the schedule is switched on."""
+    nothing until the schedule is switched on. Waits out the first-login
+    seed before its first look at the clock."""
+    time.sleep(90)
     while True:
         try:
             r = schedule_tick()
@@ -833,6 +842,10 @@ def restore_files(src):
                     dst = os.path.join(base, rel)
                     os.makedirs(os.path.dirname(dst), exist_ok=True)
                     shutil.copy2(os.path.join(root, fn), dst)
+    css = os.path.join(src, "data", "themes", "Flattoo", "xfce-notify-4.0", "gtk.css")
+    if os.path.exists(css):
+        with open(css) as f:
+            write_notify_theme(f.read())
     return True
 
 
