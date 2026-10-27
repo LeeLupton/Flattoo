@@ -262,6 +262,7 @@ def apply_live(p, quiet=False, scheduled=False):
     apply_notify(p.get("notify"))
     apply_night_light(p.get("night_light"))
     apply_gnome(p)
+    apply_lock_keyboard()
     if "gtk_theme" in p:
         xq_set("xsettings", "/Net/ThemeName", "string", p["gtk_theme"]); say("theme:", p["gtk_theme"])
     if "icon_theme" in p:
@@ -520,6 +521,15 @@ def make_backdrop(wallpaper, dark=True):
         os.replace(tmp, os.path.join(BACKDROP_DIR, "backdrop.png"))
     except (OSError, ValueError) as ex:
         print("backdrop:", ex, file=sys.stderr)
+
+
+def apply_lock_keyboard():
+    """The on-screen keyboard on the lock screen. The seed XML covers a fresh
+    user; a desktop that existed before onboard arrived gets it here."""
+    if not shutil.which("onboard"):
+        return
+    xq_set("xfce4-screensaver", "/lock/embedded-keyboard/enabled", "bool", "true")
+    xq_set("xfce4-screensaver", "/lock/embedded-keyboard/command", "string", "onboard --xid")
 
 
 def apply_night_light(kelvin):
