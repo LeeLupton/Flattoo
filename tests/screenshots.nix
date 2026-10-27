@@ -201,6 +201,9 @@ in
 pkgs.testers.runNixOSTest {
   name = "flattoo-screenshots";
   node.pkgsReadOnly = false;
+  # Fifteen composed looks, the dialogs and a second session, under TCG
+  # when there is no KVM: well over the driver's one-hour default.
+  globalTimeout = 4 * 3600;
 
   nodes.studio =
     { ... }:
@@ -304,16 +307,18 @@ pkgs.testers.runNixOSTest {
     wait_window("Print stencil")
     shot("print-stencil", "Print as Stencil with no stencil printer attached: it offers the other printers at true size instead. With the stencil printer on, it asks for width on skin, mirror, crisp lines or shading, copies.")
     close_dialogs()
+    # The printer wizards need hardware to show anything; a short wait is enough
+    # to catch the "nothing found" dialog if it comes, and not much is lost if not.
     bg("stencil-fix-printer")
-    wait_window("Stencil printer", timeout=480)
+    wait_window("Stencil printer", timeout=120)
     shot("fix-printer", "Fix Stencil Printer: it looks over USB, Wi-Fi and Bluetooth and says what it found — here, with no printer attached, what you see when it finds nothing.")
     close_dialogs()
     bg("stencil-bt-setup")
-    wait_window("Bluetooth stencil printer")
+    wait_window("Bluetooth stencil printer", timeout=90)
     shot("bluetooth-printer", "Add Bluetooth Stencil Printer, from the menu or Ask Flattoo. With the printer on and blinking, it lists it; pick it and type the PIN if asked.")
     close_dialogs()
     bg("stencil-net-setup")
-    wait_window("Network stencil printer")
+    wait_window("Network stencil printer", timeout=90)
     shot("network-printer", "Add Network Stencil Printer: it sweeps the shop Wi-Fi for printers and lists what it finds, or takes an address.")
     close_dialogs()
 
