@@ -49,8 +49,31 @@
     "<Super>l": "flattoo-layout gui",
     "<Super>p": "stencil-print --gui",
     "<Super>space": "flattoo-copilot",
-    "Super_L": "xfce4-popup-whiskermenu"
+    "Super_L": "xfce4-popup-whiskermenu",
+    "<Super>Escape": "flattoo-power"
   },
   "name": "gruvbox",
-  "app_names": "standard"
+  "app_names": "standard",
+  "effects": {
+    "corners": 8,
+    "shadows": true,
+    "blur": false,
+    "animations": true,
+    "shadow_opacity": 0.45
+  },
+  "palette": {
+    "bg": "#282828",
+    "fg": "#ebdbb2",
+    "muted": "#a89984",
+    "accent": "#d79921",
+    "on_accent": "#282828",
+    "border": "#3c3836",
+    "card": "rgba(60, 56, 54, 0.85)",
+    "rofi_bg": "rgba(40, 40, 40, 0.95)",
+    "radius": 8
+  },
+  "notify": {
+    "position": "top-right",
+    "opacity": 0.97
+  }
 }

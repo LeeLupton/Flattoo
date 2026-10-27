@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Show a Client
+Comment=Your portfolio fills the screen for a client to browse; Esc ends it and locks the laptop
+Icon=view-presentation
+Exec=flattoo-showcase gui
+Terminal=false
+Categories=Graphics;X-Flattoo;
+Keywords=client;show;portfolio;gallery;present;slideshow;

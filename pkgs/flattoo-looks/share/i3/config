@@ -55,6 +55,7 @@ bindsym Print exec --no-startup-id xfce4-screenshooter
 bindsym $mod+Shift+q kill
 bindsym $mod+f fullscreen toggle
 bindsym $mod+space exec --no-startup-id flattoo-copilot
+bindsym $mod+Escape exec --no-startup-id flattoo-power
 bindsym $mod+Shift+f floating toggle
 bindsym $mod+Shift+space focus mode_toggle
 bindsym $mod+Left focus left
@@ -138,5 +139,7 @@ exec --no-startup-id blueman-applet
 exec --no-startup-id xfce4-power-manager
 exec --no-startup-id xfce4-notifyd
 exec --no-startup-id xfce4-clipman
+# window effects (picom) with the config the current look generated; falls back to no compositor
+exec --no-startup-id flattoo-compositor start
 exec --no-startup-id flattoo-session
 exec --no-startup-id xset s 900 900

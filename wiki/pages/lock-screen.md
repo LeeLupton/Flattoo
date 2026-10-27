@@ -12,7 +12,7 @@ questions:
   - is the battery charging
 actions: [power, battery]
 menu: [Log Out]
-screenshots: [lock-screen]
+screenshots: [lock-screen, power-sheet]
 related: [start-here, updates]
 ---
 ## Sleep and wake
@@ -21,7 +21,7 @@ Close the lid: the laptop sleeps and locks. Open it and the lock screen asks for
 
 ## Shutting down
 
-Menu → the power icon at the bottom → **Shut Down**, or ask Flattoo "turn off". **Restart** and **Log Out** are in the same place. Hold the power button for ten seconds only if the screen is frozen solid.
+**Super + Escape** opens the power sheet — Lock, Sleep, Restart, Shut down, Log out, in big letters; so does the power icon at the right end of the top bar, or asking Flattoo "turn off". Restart, shut down and log out ask once more before they go. Hold the power button for ten seconds only if the screen is frozen solid.
 
 ## Battery
 

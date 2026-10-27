@@ -28,6 +28,13 @@ let
     "big-and-simple"
     "classic-desktop"
     "gruvbox"
+    "blackwork"
+    "flash"
+    "neon"
+    "sakura"
+    "sakura-night"
+    "forest"
+    "kanagawa"
   ];
   lookCaptions = {
     home = "Home, the default look: app icons on the screen like a phone, a dock at the bottom, time and battery at the top. Files, Photos, Documents by their familiar names.";
@@ -38,6 +45,13 @@ let
     big-and-simple = "Big and Simple: large text and icons, a dock with the four things that matter.";
     classic-desktop = "Classic Desktop: taskbar at the bottom, menu on the left, familiar names and icons. Feels like the last computer.";
     gruvbox = "Gruvbox: warm retro colors, panel on the left edge to keep the canvas wide.";
+    blackwork = "Blackwork: black, white and grey, halftone shading on the wallpaper, a dock at the bottom.";
+    flash = "Flash Sheet: parchment with a draft grid and the traditional palette, one panel on top like a desk. Becomes Blackwork at night.";
+    neon = "Neon: a dark studio wall with neon tubes, the dock down the left side, windows a touch see-through when not in front.";
+    sakura = "Sakura: soft rosy paper and petals, round corners everywhere. Becomes Sakura Night in the evening.";
+    sakura-night = "Sakura Night: plum sky, a moon, petals in pink and lavender, a warmer screen.";
+    forest = "Forest: misty ridgelines in green-grey, one panel at the bottom with a window list. Calm, for long sessions.";
+    kanagawa = "Kanagawa: deep water blues, foam-white text, a gold accent, waves on the wallpaper.";
   };
   # A sample drawing for the Print as Stencil dialog.
   sample =
@@ -211,6 +225,12 @@ pkgs.testers.runNixOSTest {
     bg("flattoo-apps")
     wait_window("rofi")
     shot("apps-grid", "The Super key, or the grid button on the dock: every app as an icon. Type a few letters to filter.")
+    close_dialogs()
+
+    # The power sheet (Super+Escape, the power icon in the top bar)
+    bg("flattoo-power")
+    wait_window("rofi")
+    shot("power-sheet", "Super+Escape, or the power icon at the right of the top bar: Lock, Sleep, Restart, Shut down, Log out. Restart and shut down ask once more.")
     close_dialogs()
 
     # Menu

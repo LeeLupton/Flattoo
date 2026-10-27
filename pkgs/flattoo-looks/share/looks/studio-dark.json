@@ -50,8 +50,31 @@
     "<Super>l": "flattoo-layout gui",
     "<Super>p": "stencil-print --gui",
     "<Super>space": "flattoo-copilot",
-    "Super_L": "xfce4-popup-whiskermenu"
+    "Super_L": "xfce4-popup-whiskermenu",
+    "<Super>Escape": "flattoo-power"
   },
   "name": "studio-dark",
-  "app_names": "standard"
+  "app_names": "standard",
+  "effects": {
+    "corners": 8,
+    "shadows": true,
+    "blur": false,
+    "animations": true,
+    "shadow_opacity": 0.4
+  },
+  "palette": {
+    "bg": "#2b2d35",
+    "fg": "#eceef2",
+    "muted": "#a4a8b3",
+    "accent": "#8fb3ff",
+    "on_accent": "#1b1c22",
+    "border": "#3a3d47",
+    "card": "rgba(58, 61, 71, 0.85)",
+    "rofi_bg": "rgba(35, 37, 44, 0.94)",
+    "radius": 10
+  },
+  "notify": {
+    "position": "top-right",
+    "opacity": 0.96
+  }
 }

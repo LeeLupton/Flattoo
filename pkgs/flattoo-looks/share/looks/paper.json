@@ -47,8 +47,32 @@
     "<Super>l": "flattoo-layout gui",
     "<Super>p": "stencil-print --gui",
     "<Super>space": "flattoo-copilot",
-    "Super_L": "xfce4-popup-whiskermenu"
+    "Super_L": "xfce4-popup-whiskermenu",
+    "<Super>Escape": "flattoo-power"
   },
   "name": "paper",
-  "app_names": "standard"
+  "app_names": "standard",
+  "effects": {
+    "corners": 6,
+    "shadows": true,
+    "blur": false,
+    "animations": false,
+    "shadow_opacity": 0.25
+  },
+  "palette": {
+    "bg": "#fbf7ef",
+    "fg": "#2a2622",
+    "muted": "#6a635a",
+    "accent": "#2a2622",
+    "on_accent": "#fbf7ef",
+    "border": "#e4dccb",
+    "card": "rgba(255, 255, 255, 0.85)",
+    "rofi_bg": "rgba(251, 247, 239, 0.95)",
+    "radius": 8
+  },
+  "notify": {
+    "position": "top-right",
+    "opacity": 0.98
+  },
+  "night": "night-session"
 }

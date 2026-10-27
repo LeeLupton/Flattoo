@@ -23,7 +23,8 @@ in
       lxappearance # fine-tune GTK theme/icons/cursor by hand
 
       xfce4-docklike-plugin # the dock in the Home looks
-      rofi # the app grid (flattoo-apps)
+      rofi # the app grid, the power sheet
+      redshift # the warm screen of the night looks
 
       # GTK + xfwm4 themes
       whitesur-gtk-theme # phone/Mac-style, the Home looks
@@ -32,9 +33,14 @@ in
       materia-theme
       dracula-theme
       nordic
-      gruvbox-gtk-theme
+      gruvbox-gtk-theme # Gruvbox, Flash Sheet
       adw-gtk3
       orchis-theme
+      graphite-gtk-theme # Blackwork
+      tokyonight-gtk-theme # Neon
+      rose-pine-gtk-theme # Sakura, Sakura Night
+      everforest-gtk-theme # Forest
+      kanagawa-gtk-theme # Kanagawa
       # icons
       whitesur-icon-theme
       fluent-icon-theme
@@ -42,12 +48,20 @@ in
       tela-icon-theme
       numix-icon-theme
       adwaita-icon-theme
+      qogir-icon-theme # Blackwork
+      kora-icon-theme # Flash Sheet
+      nordzy-icon-theme # Sakura, Neon, Forest, Kanagawa (one set, many colours)
       # cursors
       whitesur-cursors
       bibata-cursors
       capitaine-cursors
       phinger-cursors
+      graphite-cursors
+      rose-pine-cursor
+      nordzy-cursor-theme
+      volantes-cursors
     ]
+    ++ lib.optional cfg.desktop.effects picom
     ++ lib.optionals cfg.desktop.i3Session [
       i3status
       i3lock
@@ -108,6 +122,42 @@ in
     OnlyShowIn=XFCE;
     NoDisplay=true
   '';
+
+  # Window effects: picom with the config the current look wrote, started
+  # after the panel (so the dock's translucency is already there to blur
+  # behind). The i3 session starts it from its own config.
+  environment.etc."xdg/autostart/flattoo-compositor.desktop" = lib.mkIf cfg.desktop.effects {
+    text = ''
+      [Desktop Entry]
+      Type=Application
+      Name=Window effects
+      Exec=${pkgs.writeShellScript "flattoo-compositor-start" ''
+        for _ in $(seq 1 30); do
+          ${pkgs.procps}/bin/pgrep -u "$(id -u)" -f xfce4-panel >/dev/null && break
+          sleep 1
+        done
+        sleep 2
+        exec ${pkgs.flattoo-looks}/bin/flattoo-compositor start
+      ''}
+      OnlyShowIn=XFCE;
+      NoDisplay=true
+    '';
+  };
+
+  # The automatic night look: a tiny loop that checks the clock. Idle until
+  # the artist turns it on (Looks → Automatic night look).
+  environment.etc."xdg/autostart/flattoo-night-schedule.desktop" =
+    lib.mkIf cfg.desktop.nightSchedule
+      {
+        text = ''
+          [Desktop Entry]
+          Type=Application
+          Name=Automatic night look
+          Exec=${pkgs.flattoo-looks}/bin/flattoo-look schedule daemon
+          OnlyShowIn=XFCE;
+          NoDisplay=true
+        '';
+      };
 
   # Touchpad gestures: three fingers switch workspaces and maximize/minimize,
   # four fingers show the desktop, pinch zooms. Config seeded per user above.

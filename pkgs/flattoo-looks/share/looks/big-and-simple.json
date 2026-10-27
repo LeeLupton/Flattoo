@@ -43,8 +43,25 @@
     "<Super>l": "flattoo-layout gui",
     "<Super>p": "stencil-print --gui",
     "<Super>space": "flattoo-copilot",
-    "Super_L": "xfce4-popup-whiskermenu"
+    "Super_L": "xfce4-popup-whiskermenu",
+    "<Super>Escape": "flattoo-power"
   },
   "name": "big-and-simple",
-  "app_names": "standard"
+  "app_names": "standard",
+  "effects": false,
+  "palette": {
+    "bg": "#2f343f",
+    "fg": "#f4f5f7",
+    "muted": "#b7bcc7",
+    "accent": "#5294e2",
+    "on_accent": "#ffffff",
+    "border": "#434a59",
+    "card": "rgba(67, 74, 89, 0.9)",
+    "rofi_bg": "rgba(47, 52, 63, 0.97)",
+    "radius": 6
+  },
+  "notify": {
+    "position": "top-right",
+    "opacity": 1.0
+  }
 }

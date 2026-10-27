@@ -1,0 +1,313 @@
+#!/usr/bin/env python3
+"""The laptop as a shop display, and handing it to a client.
+
+  flattoo-showcase gui                menu entry "Show a client": confirm, then client mode
+  flattoo-showcase client [FOLDER]    full-screen slideshow of the portfolio. Esc ends it
+                                      and LOCKS the laptop, so a client can browse and
+                                      nothing else. Notifications are muted meanwhile.
+  flattoo-showcase display on|off     shop display: when the laptop sits idle, the
+                                      screensaver shows the portfolio instead of going black
+  flattoo-showcase display status|gui
+  flattoo-showcase slideshow          (internal) the screensaver theme itself
+
+The portfolio is what Portfolio built (~/Portfolio/<date>/web); a folder of
+your own can be chosen instead. Nothing leaves the laptop.
+"""
+import argparse
+import glob
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+HOME = os.path.expanduser("~")
+CFG = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".config")), "flattoo")
+DISPLAY_CFG = os.path.join(CFG, "display.json")
+PORTFOLIO = os.path.join(HOME, "Portfolio")
+SLIDESHOW = "@slideshow@"  # xfce4-screensaver's slideshow helper
+EXTS = (".jpg", ".jpeg", ".png", ".webp")
+
+
+def run(cmd, **kw):
+    try:
+        return subprocess.run(cmd, text=True, capture_output=True, **kw)
+    except OSError as ex:
+        return subprocess.CompletedProcess(cmd, 1, "", str(ex))
+
+
+def zenity(*args):
+    return run(["zenity", *args])
+
+
+def xq(channel, prop, typ, *values):
+    if len(values) == 1:
+        return run(["xfconf-query", "-c", channel, "-p", prop, "-n", "-t", typ, "-s", str(values[0])]).returncode == 0
+    cmd = ["xfconf-query", "-c", channel, "-p", prop, "-n", "-a"]
+    for v in values:
+        cmd += ["-t", typ, "-s", str(v)]
+    return run(cmd).returncode == 0
+
+
+def xq_get(channel, prop):
+    r = run(["xfconf-query", "-c", channel, "-p", prop])
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def load_cfg():
+    try:
+        with open(DISPLAY_CFG) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_cfg(c):
+    os.makedirs(CFG, exist_ok=True)
+    with open(DISPLAY_CFG, "w") as f:
+        json.dump(c, f, indent=2)
+
+
+def images_in(folder):
+    return sorted(p for p in glob.glob(os.path.join(folder, "*")) if p.lower().endswith(EXTS))
+
+
+def portfolio_folder(preferred=None):
+    """The newest gallery Portfolio built, or the chosen folder, or None."""
+    for cand in ([preferred] if preferred else []) + [load_cfg().get("folder")]:
+        if cand and os.path.isdir(cand) and images_in(cand):
+            return cand
+    builds = sorted(glob.glob(os.path.join(PORTFOLIO, "*", "web")), reverse=True)
+    for b in builds:
+        if images_in(b):
+            return b
+    if os.path.isdir(PORTFOLIO) and images_in(PORTFOLIO):
+        return PORTFOLIO
+    return None
+
+
+def no_gallery(gui):
+    msg = "There is no gallery yet. Portfolio builds one from your finished-work photos (originals stay where they are)."
+    if gui:
+        if zenity("--question", "--title=Show a client", "--width=460", f"--text={msg}", "--ok-label=Build it now", "--cancel-label=Not now").returncode == 0:
+            subprocess.Popen(["flattoo-portfolio"], start_new_session=True)
+    else:
+        print(msg, file=sys.stderr)
+    return 1
+
+
+# ------------------------------------------------------------------ client mode
+
+FEH_KEYS = """# flattoo client mode: browse only. Everything that could change or
+# remove a picture is unbound; Escape ends the session (and locks the laptop).
+quit Escape q
+next_img Right Down space Page_Down
+prev_img Left Up BackSpace Page_Up
+zoom_in plus KP_Add
+zoom_out minus KP_Subtract
+zoom_default 0
+zoom_fit slash
+toggle_fullscreen
+toggle_pause p
+delete
+remove
+save_image
+save_filelist
+action_0
+action_1
+action_2
+action_3
+action_4
+action_5
+action_6
+action_7
+action_8
+action_9
+toggle_filenames
+toggle_info
+toggle_menu
+toggle_caption
+toggle_exif
+toggle_keep_vp
+toggle_auto_zoom
+toggle_aliasing
+toggle_fixed_geometry
+reload_image
+reload_minus
+reload_plus
+orient_1
+orient_3
+flip
+mirror
+jump_first
+jump_last
+jump_fwd
+jump_back
+jump_random
+render
+size_to_image
+"""
+
+FEH_BUTTONS = """# flattoo client mode: tap = next, right button = back, wheel = zoom
+next_img 1
+prev_img 3
+zoom_in 4
+zoom_out 5
+pan 2
+menu
+blur
+rotate
+reload
+zoom
+"""
+
+
+def lock_screen():
+    for cmd in (["xflock4"], ["xfce4-screensaver-command", "--lock"], ["loginctl", "lock-session"]):
+        if shutil.which(cmd[0]):
+            if run(cmd).returncode == 0:
+                return True
+    return False
+
+
+def client(folder, gui):
+    folder = portfolio_folder(folder)
+    if not folder:
+        return no_gallery(gui)
+    if not shutil.which("feh"):
+        print("feh is not installed", file=sys.stderr)
+        return 1
+    dnd_before = xq_get("xfce4-notifyd", "/do-not-disturb")
+    xq("xfce4-notifyd", "/do-not-disturb", "bool", "true")
+    with tempfile.TemporaryDirectory(prefix="flattoo-client-") as tmp:
+        os.makedirs(os.path.join(tmp, "feh"))
+        with open(os.path.join(tmp, "feh", "keys"), "w") as f:
+            f.write(FEH_KEYS)
+        with open(os.path.join(tmp, "feh", "buttons"), "w") as f:
+            f.write(FEH_BUTTONS)
+        env = dict(os.environ, XDG_CONFIG_HOME=tmp)
+        run(["notify-send", "-a", "Flattoo", "-t", "2500", "Showing your work", "Esc ends it and locks the laptop."])
+        try:
+            subprocess.run(["feh", "--fullscreen", "--auto-zoom", "--hide-pointer", "--borderless", "--no-menus",
+                            "--image-bg", "black", "--slideshow-delay", "8", "--quiet",
+                            "--sort", "name", "--title", "Flattoo", folder], env=env)
+        finally:
+            if dnd_before in ("true", "false"):
+                xq("xfce4-notifyd", "/do-not-disturb", "bool", dnd_before)
+            else:
+                xq("xfce4-notifyd", "/do-not-disturb", "bool", "false")
+    lock_screen()
+    return 0
+
+
+def client_gui():
+    folder = portfolio_folder()
+    if not folder:
+        return no_gallery(True)
+    n = len(images_in(folder))
+    r = zenity("--question", "--title=Show a client", "--width=500", "--ok-label=Show my work", "--cancel-label=Cancel",
+               f"--text=<b>{n} pieces</b> from {folder.replace(HOME, '~')} fill the screen, one tap goes to the next.\n\n"
+               "When the client is done, <b>Esc</b> ends it and the laptop <b>locks</b> — your password brings the desktop back. "
+               "Notifications stay quiet meanwhile.")
+    if r.returncode != 0:
+        return 1
+    return client(folder, True)
+
+
+# ------------------------------------------------------------------ shop display (screensaver)
+
+SAVER_THEME = "screensavers-flattoo-showcase"
+
+
+def display(state, gui=False):
+    c = load_cfg()
+    if state == "status":
+        mode = xq_get("xfce4-screensaver", "/saver/mode")
+        on = c.get("enabled", False) and mode == "1"
+        print("on" if on else "off", c.get("folder") or portfolio_folder() or "(no gallery)")
+        return 0
+    if state == "on":
+        folder = portfolio_folder()
+        if not folder:
+            return no_gallery(gui)
+        c["enabled"] = True
+        c.setdefault("folder", folder)
+        save_cfg(c)
+        xq("xfce4-screensaver", "/saver/mode", "int", 1)
+        xq("xfce4-screensaver", "/saver/themes", "string", SAVER_THEME)
+        xq("xfce4-screensaver", "/saver/enabled", "bool", "true")
+        xq("xfce4-screensaver", "/saver/idle-activation/enabled", "bool", "true")
+        run(["notify-send", "-a", "Flattoo", "Shop display on", "When the laptop sits idle it shows your work. A tap brings the desktop back."])
+        return 0
+    if state == "off":
+        c["enabled"] = False
+        save_cfg(c)
+        xq("xfce4-screensaver", "/saver/mode", "int", 0)
+        run(["notify-send", "-a", "Flattoo", "Shop display off", "An idle laptop goes dark again."])
+        return 0
+    return 2
+
+
+def display_gui():
+    c = load_cfg()
+    folder = c.get("folder") or portfolio_folder() or "(no gallery yet)"
+    on = c.get("enabled", False) and xq_get("xfce4-screensaver", "/saver/mode") == "1"
+    r = zenity("--list", "--radiolist", "--title=Shop display", "--width=540", "--height=300",
+               "--text=When nobody touches the laptop for a while, show your work instead of a black screen.\n"
+               f"Pictures: {folder.replace(HOME, '~')}\n\nAnyone walking past will see them — keep it off for private client photos.",
+               "--column=", "--column=id", "--column=Shop display", "--hide-column=2", "--print-column=2",
+               "TRUE" if on else "FALSE", "on", "On — show my work when idle",
+               "FALSE" if on else "TRUE", "off", "Off — a dark screen when idle",
+               "FALSE", "folder", "Choose a different folder of pictures…")
+    if r.returncode != 0 or not r.stdout.strip():
+        return 1
+    pick = r.stdout.strip()
+    if pick == "folder":
+        r = zenity("--file-selection", "--directory", "--title=Folder of pictures to show", f"--filename={PORTFOLIO}/")
+        if r.returncode != 0 or not r.stdout.strip():
+            return 1
+        if not images_in(r.stdout.strip()):
+            zenity("--error", "--title=Shop display", "--text=No pictures in that folder (jpg, png, webp).")
+            return 1
+        c["folder"] = r.stdout.strip()
+        save_cfg(c)
+        return display("on", True)
+    return display(pick, True)
+
+
+def slideshow():
+    """What the screensaver runs: xfce4-screensaver's own slideshow helper,
+    pointed at the portfolio. It inherits XSCREENSAVER_WINDOW and draws there."""
+    folder = portfolio_folder()
+    if not folder or not os.path.exists(SLIDESHOW):
+        return 1
+    os.execv(SLIDESHOW, [SLIDESHOW, f"--location={folder}", "--background-color=#000000", "--no-stretch"])
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="flattoo-showcase", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("gui")
+    c = sub.add_parser("client"); c.add_argument("folder", nargs="?")
+    d = sub.add_parser("display"); d.add_argument("state", choices=["on", "off", "status", "gui"])
+    sub.add_parser("slideshow")
+    sub.add_parser("folder", help="print the folder that would be shown")
+    args = ap.parse_args(argv)
+    if args.cmd == "gui":
+        return client_gui()
+    if args.cmd == "client":
+        return client(args.folder, bool(os.environ.get("DISPLAY")))
+    if args.cmd == "display":
+        return display_gui() if args.state == "gui" else display(args.state)
+    if args.cmd == "slideshow":
+        return slideshow()
+    if args.cmd == "folder":
+        f = portfolio_folder()
+        print(f or "")
+        return 0 if f else 1
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

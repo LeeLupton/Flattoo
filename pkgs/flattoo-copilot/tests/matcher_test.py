@@ -65,6 +65,33 @@ CASES = [
     ("add fine line to my skills", "profile-skill", None),
     ("how do I get more clients", "exposure", None),
     ("google listing", "exposure", None),
+    # looks by name, dark/light, and the evening schedule
+    ("switch to the neon look", "look", {"name": "neon"}),
+    ("sakura", "look", {"name": "sakura"}),
+    ("I want the flash sheet look", "look", {"name": "flash"}),
+    ("blackwork please", "look", {"name": "blackwork"}),
+    ("home dark", "look", {"name": "home-dark"}),
+    ("dark mode", "look", {"mode": "dark"}),
+    ("go dark", "look", {"mode": "dark"}),
+    ("light mode", "look", {"mode": "light"}),
+    ("make it dark at night automatically", "night-look", {"state": "on"}),
+    ("dark mode at 9pm", "night-look", {"state": "on", "night": "21:00", "day": None}),
+    ("night look from 20:30 to 7", "night-look", {"state": "on", "night": "20:30", "day": "07:00"}),
+    ("stop the automatic night look", "night-look", {"state": "off"}),
+    ("warmer screen in the evening", "night-look", {"state": "on"}),
+    ("night look settings", "night-look", {}),
+    ("turn off the animations", "effects", {"state": "off"}),
+    ("the desktop feels slow", "effects", {}),
+    ("effects on", "effects", {"state": "on"}),
+    ("rounded corners off", "effects", {"state": "off"}),
+    ("show a client my work", "client", {}),
+    ("client wants to see my portfolio", "client", {}),
+    ("hand them the laptop", "client", {}),
+    ("shop display on", "shop-display", {"state": "on"}),
+    ("turn off the screensaver", "shop-display", {"state": "off"}),
+    ("show my work when idle", "shop-display", {}),
+    ("turn off", "power", None),
+    ("make the text bigger", "look", None),
 ]
 
 env = dict(os.environ, HOME=os.environ.get("TMPDIR", "/tmp"), XDG_DATA_DIRS="/nonexistent")
@@ -82,6 +109,8 @@ for text, want, pkgs in CASES:
     if ok and pkgs is not None:
         if want == "suggest":
             ok = bool(set(got["args"].get("candidates", [])[:4]) & pkgs)
+        elif isinstance(pkgs, dict):
+            ok = got["args"] == pkgs
         else:
             ok = got["args"].get("pkg") in pkgs
     print(("ok  " if ok else "FAIL"), f"{text!r} -> {got['action']} {got['args'] if pkgs else ''}")
@@ -115,6 +144,10 @@ for payload, expect in [
     ({"action": "install", "args": {"pkg": "pinta", "extra": "--force"}, "say": "ok"}, ("install", {"pkg": "pinta"})),
     ({"action": "suggest", "args": {"candidates": ["krita", "evil", "pinta"]}, "say": "ok"}, ("suggest", ["krita", "pinta"])),
     ({"action": "update", "args": {"flake": "github:evil/x"}, "say": "ok"}, ("update", {})),
+    ({"action": "look", "args": {"name": "../../etc/passwd"}, "say": "ok"}, ("look", {})),
+    ({"action": "look", "args": {"name": "neon"}, "say": "ok"}, ("look", {"name": "neon"})),
+    ({"action": "night-look", "args": {"state": "on", "night": "99:00", "day": "7:00"}, "say": "ok"}, ("night-look", {"state": "on", "day": "7:00"})),
+    ({"action": "effects", "args": {"state": "maybe"}, "say": "ok"}, ("effects", {})),
     ("not json at all", None),
 ]:
     fake_llm(payload)

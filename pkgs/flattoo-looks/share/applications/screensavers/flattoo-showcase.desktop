@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Flattoo portfolio
+Comment=Your finished work, one piece at a time (Shop Display in the menu turns it on and off)
+Exec=flattoo-showcase slideshow
+TryExec=flattoo-showcase
+StartupNotify=false
+Terminal=false
+Type=Application
+Categories=Screensaver;
+OnlyShowIn=XFCE;
+Hidden=true

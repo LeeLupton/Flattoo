@@ -29,7 +29,8 @@
         "spacer",
         "tray",
         "volume",
-        "power"
+        "power",
+        "powersheet"
       ],
       "clock": "%-I:%M"
     },
@@ -182,6 +183,30 @@
     "<Super>l": "flattoo-layout gui",
     "<Super>p": "stencil-print --gui",
     "<Super>space": "flattoo-copilot",
-    "Super_L": "flattoo-apps"
-  }
+    "Super_L": "flattoo-apps",
+    "<Super>Escape": "flattoo-power"
+  },
+  "effects": {
+    "corners": 14,
+    "shadows": true,
+    "blur": true,
+    "animations": true,
+    "shadow_opacity": 0.45
+  },
+  "palette": {
+    "bg": "#1f2027",
+    "fg": "#f2f2f5",
+    "muted": "#a9a9b3",
+    "accent": "#5b8cff",
+    "on_accent": "#ffffff",
+    "border": "#34353e",
+    "card": "rgba(70, 72, 84, 0.75)",
+    "rofi_bg": "rgba(20, 21, 28, 0.90)",
+    "radius": 18
+  },
+  "notify": {
+    "position": "top-center",
+    "opacity": 0.95
+  },
+  "night_light": 4500
 }

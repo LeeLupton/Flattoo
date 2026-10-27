@@ -1,0 +1,58 @@
+/* Flattoo power sheet: a short list of big rows in the middle of the screen,
+   like a phone's action sheet. Super+Escape. Colours are overridden by the
+   current look's palette (rofi-colors.rasi). */
+configuration {
+    show-icons: true;
+    hover-select: true;
+    me-select-entry: "";
+    me-accept-entry: "MousePrimary";
+}
+* {
+    background-color: transparent;
+    text-color: #1d1d1f;
+    font: "Inter 15";
+}
+window {
+    location: center;
+    anchor: center;
+    width: 380px;
+    background-color: rgba(245, 245, 250, 0.96);
+    border-radius: 26px;
+    padding: 18px;
+}
+mainbox {
+    spacing: 10px;
+}
+inputbar {
+    children: [ "prompt" ];
+    background-color: transparent;
+    padding: 4px 10px;
+}
+prompt {
+    font: "Inter 13";
+    text-color: #8e8e93;
+}
+listview {
+    columns: 1;
+    lines: 5;
+    spacing: 6px;
+    fixed-height: false;
+    scrollbar: false;
+    cycle: false;
+}
+element {
+    orientation: horizontal;
+    padding: 14px 16px;
+    border-radius: 16px;
+    spacing: 16px;
+}
+element selected {
+    background-color: rgba(255, 255, 255, 0.75);
+}
+element-icon {
+    size: 1.6em;
+    vertical-align: 0.5;
+}
+element-text {
+    vertical-align: 0.5;
+}

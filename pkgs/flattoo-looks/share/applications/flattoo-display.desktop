@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Shop Display
+Comment=When the laptop sits idle, show your work instead of a black screen
+Icon=preferences-desktop-screensaver
+Exec=flattoo-showcase display gui
+Terminal=false
+Categories=Settings;DesktopSettings;
+Keywords=screensaver;idle;display;portfolio;slideshow;shop;

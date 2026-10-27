@@ -27,13 +27,25 @@ in
 
   boot.kernelPackages = if cfg.kernel.latest then pkgs.linuxPackages_latest else pkgs.linuxPackages;
 
-  # Quiet boot; the LUKS prompt is the only thing the artist sees.
+  # Quiet boot; the LUKS prompt is the only thing the artist sees, on the
+  # splash: the Flattoo mark as the watermark of plymouth's spinner theme,
+  # the passphrase dialog in the middle. No kernel lines, no blinking cursor.
   boot.kernelParams = [
     "quiet"
     "loglevel=3"
+    "udev.log_level=3"
+    "rd.systemd.show_status=auto"
+    "systemd.show_status=auto"
+    "vt.global_cursor_default=0"
   ];
   boot.initrd.systemd.enable = true;
-  boot.plymouth.enable = true;
+  boot.initrd.verbose = false;
+  boot.consoleLogLevel = lib.mkDefault 3;
+  boot.plymouth = {
+    enable = true;
+    theme = if cfg.desktop.bootSplash then "spinner" else "bgrt";
+    logo = lib.mkIf cfg.desktop.bootSplash "${pkgs.flattoo-looks}/share/backgrounds/flattoo/flattoo-mark.png";
+  };
 
   # Compressed RAM swap instead of a swap partition. No hibernation on this
   # machine; lid close = suspend.

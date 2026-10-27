@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# The power sheet: one big list — Lock, Sleep, Restart, Shut down, Log out —
+# in the look's rofi style (Super+Escape, the panel power item, or Ask
+# Flattoo "turn off"). Restart, shut down and log out ask once more.
+set -u
+THEME="@rofi@/power.rasi"
+COLORS="${XDG_CONFIG_HOME:-$HOME/.config}/flattoo/rofi-colors.rasi"  # from the current look
+
+menu() {  # $1 prompt, rest: "Label\0icon\x1fname" rows
+  local prompt=$1; shift
+  local extra=()
+  [ -s "$COLORS" ] && extra=(-theme-str "$(cat "$COLORS")")
+  printf '%b\n' "$@" | rofi -dmenu -i -no-custom -p "$prompt" -theme "$THEME" "${extra[@]}" -show-icons
+}
+
+confirm() {  # $1 question
+  local ans
+  ans=$(menu "$1" 'Yes\0icon\x1femblem-ok' 'No\0icon\x1fwindow-close') || return 1
+  [ "$ans" = Yes ]
+}
+
+in_xfce() { command -v xfce4-session-logout >/dev/null && pgrep -u "$(id -u)" -x xfce4-session >/dev/null; }
+
+pick=$(menu "Power" \
+  'Lock\0icon\x1fsystem-lock-screen' \
+  'Sleep\0icon\x1fsystem-suspend' \
+  'Restart\0icon\x1fsystem-reboot' \
+  'Shut down\0icon\x1fsystem-shutdown' \
+  'Log out\0icon\x1fsystem-log-out') || exit 0
+
+case "$pick" in
+  Lock)
+    if command -v xflock4 >/dev/null; then xflock4
+    elif command -v xfce4-screensaver-command >/dev/null; then xfce4-screensaver-command --lock
+    else loginctl lock-session; fi
+    ;;
+  Sleep)
+    if in_xfce; then xfce4-session-logout --suspend; else systemctl suspend; fi
+    ;;
+  Restart)
+    confirm "Restart now?" || exit 0
+    if in_xfce; then xfce4-session-logout --reboot; else systemctl reboot; fi
+    ;;
+  "Shut down")
+    confirm "Shut down now?" || exit 0
+    if in_xfce; then xfce4-session-logout --halt; else systemctl poweroff; fi
+    ;;
+  "Log out")
+    confirm "Log out now? Open work that is not saved will be lost." || exit 0
+    if in_xfce; then xfce4-session-logout --logout; elif command -v i3-msg >/dev/null; then i3-msg exit; else loginctl terminate-session "${XDG_SESSION_ID:-}"; fi
+    ;;
+esac

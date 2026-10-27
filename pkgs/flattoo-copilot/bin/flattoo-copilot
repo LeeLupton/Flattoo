@@ -53,7 +53,11 @@ ACTIONS = {
     "battery": "Battery status",
     "power": "Shut down, restart, sleep or log out",
     "display": "Screen brightness and a second screen",
-    "look": "Change the look of the desktop",
+    "look": "Change the look of the desktop (a look by name, dark or light)",
+    "night-look": "Automatic night look: the dark twin of your look in the evening, a warmer screen",
+    "effects": "Window effects on or off (rounded corners, shadows, blur, animations)",
+    "client": "Show a client your work: the portfolio fills the screen, Esc ends it and locks the laptop",
+    "shop-display": "Shop display: show your work on the screen when the laptop sits idle",
     "layout": "Open a window layout",
     "lock": "Lock the setup",
     "installed": "List what is installed",
@@ -72,6 +76,14 @@ SYNONYMS = {
     "disk": ["disk", "storage", "free space", "free up", "clean up", "cleanup", "running out of", "out of space", "out of room", "space left", "full"],
     "wifi": ["wifi", "wi-fi", "internet", "network", "wireless"],
     "bluetooth": ["bluetooth", "pair", "headphones", "speaker"],
+    "shop-display": ["shop display", "screensaver", "screen saver", "when idle", "idle screen", "when nobody", "when i'm not using it", "slideshow of my work",
+                     "show my work when", "display my work", "window display"],
+    "client": ["show a client", "show the client", "client mode", "client wants to see", "show my work", "show them my work", "show her my work",
+               "show him my work", "hand the laptop", "hand them the laptop", "let them browse", "let them look", "present my work", "walk-in wants to see"],
+    "night-look": ["night look", "night mode", "automatic dark", "dark at night", "dark in the evening", "at night", "in the evening", "night shift",
+                   "warm screen", "warmer screen", "automatic night", "switch to dark automatically", "dark automatically", "schedule"],
+    "effects": ["effects", "animation", "rounded corners", "shadows", "blur", "transparen", "feels slow", "laggy", "lagging", "stutter",
+                "slow desktop", "desktop is slow", "windows are slow", "fancy stuff", "eye candy", "wobbly", "flat look"],
     "power": ["turn off", "shut down", "shutdown", "power off", "switch off", "restart", "reboot", "log out", "logout", "go to sleep"],
     "display": ["brightness", "too dark", "too bright", "dim", "second screen", "external screen", "monitor", "projector", "mirror the screen"],
     "battery": ["battery", "charge", "charging", "power"],
@@ -267,6 +279,31 @@ def match_catalog(text, cat):
     return scored
 
 
+def looks():
+    """name -> title of every look flattoo-look knows (system and user presets)."""
+    out = {}
+    r = run(["flattoo-look", "list"])
+    for line in r.stdout.splitlines():
+        parts = line.split(None, 1)
+        if parts:
+            title = parts[1].split("  —")[0].strip() if len(parts) > 1 else parts[0]
+            out[parts[0]] = title
+    return out
+
+
+def match_look(t):
+    """A look named in the text, by name or title, longest match first; None if none."""
+    cands = []
+    for name, title in looks().items():
+        for key in {name, name.replace("-", " "), title.lower(), title.lower().replace("&", "and")}:
+            if key and re.search(r"(?<![a-z0-9])" + re.escape(key) + r"(?![a-z0-9])", t):
+                cands.append((len(key), name))
+    if not cands:
+        return None
+    cands.sort(reverse=True)
+    return cands[0][1]
+
+
 def classify(text, cat):
     """Rule-based understanding. Returns (action, args, confidence)."""
     t = norm(text)
@@ -316,15 +353,49 @@ def classify(text, cat):
     if m:
         return "profile-skill", {"skill": re.sub(r"[^a-z0-9 +&/-]", "", m.group(1)).strip()[:40]}, 0.8
 
-    # 5. System chores.
-    for action, syns in SYNONYMS.items():
-        if any(s in t for s in syns):
-            return action, {}, 0.8
+    # 5. A look by name ("neon", "switch to sakura", "the blackwork look") or
+    #    dark/light mode — unless a time or "automatically" makes it a schedule.
+    scheduled = any(w in t for w in ("automatic", "at night", "in the evening", "every night", "every evening", "when it gets dark",
+                                     "schedule", "evenings", "nights")) \
+        or re.search(r"\b(at|from|after|until|till|to)\s+\d{1,2}(:\d{2})?\s*(am|pm)?\b", t)
+    look = match_look(t)
+    if look and not scheduled:
+        return "look", {"name": look}, 0.8
+    if not scheduled:
+        # "night look" is the automatic one (below); "dark mode"/"dark look" is a switch now
+        if re.search(r"\b(dark|night)\s*(mode|theme)\b|\bdark look\b", t) or t.strip() in ("dark", "go dark", "make it dark", "darker"):
+            return "look", {"mode": "dark"}, 0.8
+        if re.search(r"\b(light|day|bright)\s*(mode|theme|look)\b", t) or t.strip() in ("go light", "make it light", "lighter"):
+            return "look", {"mode": "light"}, 0.8
 
-    # 6. A vague app wish ("something for photos").
+    # 6. System chores.
+    for action, syns in SYNONYMS.items():
+        if any(s in t for s in syns) or (action == "night-look" and scheduled and re.search(r"dark|night|light|warm", t)):
+            args = {}
+            if action in ("shop-display", "effects", "night-look"):
+                if re.search(r"\b(off|stop|disable|no more|turn it off|get rid)\b", t):
+                    args = {"state": "off"}
+                elif re.search(r"\b(on|start|enable|turn it on|back on)\b", t) or (action == "night-look" and scheduled):
+                    args = {"state": "on"}
+            if action == "night-look" and args.get("state") == "on":
+                m = re.findall(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b", text.lower())  # the raw text keeps the colon in 20:30
+                times = []
+                for h, mi, ap in m:
+                    h = int(h)
+                    if ap == "pm" and h < 12:
+                        h += 12
+                    if ap == "am" and h == 12:
+                        h = 0
+                    if h < 24:
+                        times.append(f"{h:02d}:{mi or '00'}")
+                if times:
+                    args = {"state": "on", "night": times[0], "day": times[1] if len(times) > 1 else None}
+            return action, args, 0.8
+
+    # 7. A vague app wish ("something for photos").
     if hits:
         return "suggest", {"query": text, "candidates": [e["pkg"] for _, e in hits[:5]]}, 0.6
-    # 7. Anything the wiki knows about.
+    # 8. Anything the wiki knows about.
     whits = wiki_search(text)
     if whits and whits[0][0] >= 1.0:
         return "learn", {"page": whits[0][1]["id"], "candidates": wiki_candidates(whits)}, 0.5
@@ -393,6 +464,22 @@ def llm_choose(text, cat, provider, machine_info, installed):
         if not skill:
             return None
         args = {"skill": skill}
+    elif d["action"] == "look":
+        a = {}
+        if args.get("name") in looks():
+            a["name"] = args["name"]
+        elif args.get("mode") in ("dark", "light"):
+            a["mode"] = args["mode"]
+        args = a
+    elif d["action"] in ("shop-display", "effects", "night-look"):
+        a = {}
+        if args.get("state") in ("on", "off"):
+            a["state"] = args["state"]
+        for k in ("night", "day"):
+            v = str(args.get(k, "") or "")
+            if re.fullmatch(r"\d{1,2}:\d{2}", v) and int(v.split(":")[0]) < 24 and int(v.split(":")[1]) < 60:
+                a[k] = v
+        args = a
     else:
         args = {}
     say = str(d.get("say", ""))[:400]
@@ -534,19 +621,89 @@ def do_simple(action):
     if action == "exposure":
         spawn(["flattoo-profile", "exposure-gui"]); return "Opening the exposure checklist: the free places a studio is listed and which ones need a refresh.", None
     if action == "power":
-        spawn(["xfce4-session-logout"]); return "Pick Shut Down, Restart, Suspend or Log Out.", None
+        spawn(["flattoo-power"]); return "Pick Lock, Sleep, Restart, Shut down or Log out.", None
     if action == "display":
         spawn(["xfce4-display-settings"]); return "Opening the screen settings. Brightness is the sun keys on the keyboard (hold Fn if they do nothing).", None
     if action == "battery":
         out = run(["sh", "-c", "upower -i $(upower -e | grep -m1 BAT) 2>/dev/null | grep -E 'state|percentage|time to'"]).stdout.strip()
         return (out or "No battery found."), None
     if action == "look":
-        spawn(["flattoo-look", "gui"]); return "Opening Looks.", None
+        return do_look(args)
+    if action == "night-look":
+        return do_night_look(args)
+    if action == "effects":
+        st = args.get("state")
+        if st in ("on", "off"):
+            run(["flattoo-look", "effects", st])
+            return ("Window effects on: rounded corners, shadows, blur, animations." if st == "on"
+                    else "Window effects off. The desktop is flat and quick now; say “effects on” to bring them back."), None
+        cur = run(["flattoo-look", "effects", "status"]).stdout.strip()
+        new = "off" if cur != "xfwm" else "on"
+        run(["flattoo-look", "effects", new])
+        return f"Window effects {new}. Say “effects {'on' if new == 'off' else 'off'}” to switch back.", None
+    if action == "client":
+        spawn(["flattoo-showcase", "gui"]); return "Opening “Show a client”: your portfolio fills the screen; Esc ends it and locks the laptop.", None
+    if action == "shop-display":
+        st = args.get("state")
+        if st in ("on", "off"):
+            r = run(["flattoo-showcase", "display", st])
+            if r.returncode != 0:
+                spawn(["flattoo-portfolio"])
+                return "There is no gallery yet — opening Portfolio to build one from your finished-work photos first.", None
+            return ("Shop display on: when the laptop sits idle it shows your work. Anyone walking past will see it." if st == "on"
+                    else "Shop display off: an idle laptop goes dark again."), None
+        spawn(["flattoo-showcase", "display", "gui"]); return "Opening Shop display.", None
     if action == "layout":
         spawn(["flattoo-layout", "gui"]); return "Opening Layouts.", None
     if action == "lock":
         spawn(["flattoo-lock"]); return "Opening Lock This Setup.", None
     return None
+
+
+def do_look(args):
+    name = args.get("name")
+    mode = args.get("mode")
+    known = looks()
+    if not name and mode:
+        cur = run(["flattoo-look", "current-name"]).stdout.strip()
+        if cur and cur in known:
+            twin = run(["flattoo-look", "twin", cur, mode]).stdout.strip()
+            if twin:
+                name = twin
+            elif mode == "dark" and cur in ("home", "sakura", "flash", "paper", "classic-desktop"):
+                name = None
+        if not name:
+            spawn(["flattoo-look", "gui"])
+            return f"Opening Looks — pick a {mode} one (Home Dark, Blackwork, Neon, Forest, Kanagawa, Sakura Night, Night Session, Studio Dark…)." if mode == "dark" \
+                else "Opening Looks — pick a light one (Home, Sakura, Flash Sheet, Paper, Classic Desktop).", None
+    if name and name in known:
+        r = run(["flattoo-look", "apply", name])
+        if r.returncode == 0:
+            return f"Look changed to {known[name]}.", None
+        return f"Could not apply {known[name]}: {r.stderr.strip()[-200:]}", None
+    spawn(["flattoo-look", "gui"]); return "Opening Looks.", None
+
+
+def do_night_look(args):
+    st = args.get("state")
+    if st == "off":
+        run(["flattoo-look", "schedule", "off"])
+        return "Automatic night look off. The look stays as you set it.", None
+    if st == "on":
+        cmd = ["flattoo-look", "schedule", "set"]
+        if args.get("night"):
+            cmd.append(args["night"])
+            if args.get("day"):
+                cmd.append(args["day"])
+        r = run(cmd)
+        st_ = run(["flattoo-look", "schedule", "status"]).stdout
+        try:
+            sch = json.loads(st_)
+        except ValueError:
+            sch = {}
+        return (f"Automatic night look on: dark from {sch.get('night', '20:00')} to {sch.get('day', '07:00')}. "
+                "Looks with a dark twin switch over (Home → Home Dark, Sakura → Sakura Night, Flash Sheet → Blackwork); the others just get a warmer screen."), None
+    spawn(["flattoo-look", "schedule", "gui"]); return "Opening the automatic night look settings.", None
 
 
 def do_installed(cat):

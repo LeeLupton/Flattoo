@@ -15,11 +15,50 @@ in
     xkb.layout = "us";
     desktopManager.xfce = {
       enable = true;
-      enableScreensaver = cfg.desktop.lockOnSuspend;
+      # Always on: the shop display (portfolio slideshow when idle) and "Show
+      # a client" run through it. Whether it LOCKS is the seed XML below.
+      enableScreensaver = true;
     };
     displayManager.lightdm = {
       enable = true;
-      greeters.gtk.enable = true;
+      # Auto-login skips the greeter; it still shows after a log-out, for the
+      # maintainer account, and when a second session is picked. The slick
+      # greeter is Mint's: big user tile, clock, session menu, on the ink
+      # backdrop with the Flattoo mark.
+      background = lib.mkIf cfg.desktop.loginScreen "${pkgs.flattoo-looks}/share/backgrounds/flattoo/lockscreen.png";
+      greeters.gtk.enable = !cfg.desktop.loginScreen;
+      greeters.slick = lib.mkIf cfg.desktop.loginScreen {
+        enable = true;
+        theme = {
+          name = "WhiteSur-Dark";
+          package = pkgs.whitesur-gtk-theme;
+        };
+        iconTheme = {
+          name = "WhiteSur-dark";
+          package = pkgs.whitesur-icon-theme;
+        };
+        cursorTheme = {
+          name = "WhiteSur-cursors";
+          package = pkgs.whitesur-cursors;
+          size = 28;
+        };
+        font = {
+          name = "Inter 12";
+          package = pkgs.inter;
+        };
+        draw-user-backgrounds = false;
+        extraConfig = ''
+          show-hostname=false
+          show-power=true
+          show-a11y=false
+          show-keyboard=false
+          show-clock=true
+          clock-format=%-I:%M %p
+          activate-numlock=false
+          draw-grid=false
+          enable-hidpi=auto
+        '';
+      };
     };
   };
 

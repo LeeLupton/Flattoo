@@ -48,8 +48,32 @@
     "<Super>l": "flattoo-layout gui",
     "<Super>p": "stencil-print --gui",
     "<Super>space": "flattoo-copilot",
-    "Super_L": "xfce4-popup-whiskermenu"
+    "Super_L": "xfce4-popup-whiskermenu",
+    "<Super>Escape": "flattoo-power"
   },
   "name": "night-session",
-  "app_names": "standard"
+  "app_names": "standard",
+  "effects": {
+    "corners": 10,
+    "shadows": true,
+    "blur": true,
+    "animations": true,
+    "shadow_opacity": 0.5
+  },
+  "palette": {
+    "bg": "#282a36",
+    "fg": "#f8f8f2",
+    "muted": "#9ea3c2",
+    "accent": "#bd93f9",
+    "on_accent": "#282a36",
+    "border": "#44475a",
+    "card": "rgba(68, 71, 90, 0.80)",
+    "rofi_bg": "rgba(30, 31, 41, 0.93)",
+    "radius": 12
+  },
+  "notify": {
+    "position": "top-right",
+    "opacity": 0.96
+  },
+  "night_light": 4000
 }

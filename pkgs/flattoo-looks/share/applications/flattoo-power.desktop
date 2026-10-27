@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Power
+Comment=Lock, sleep, restart, shut down or log out
+Icon=system-shutdown
+Exec=flattoo-power
+Terminal=false
+Categories=System;
+Keywords=power;shutdown;restart;sleep;lock;logout;
+NoDisplay=true

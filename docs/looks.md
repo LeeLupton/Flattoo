@@ -20,6 +20,17 @@ keyboard shortcuts, live, through xfconf — no logout.
 | **Big and Simple** | Large icons and text, dock at the bottom. |
 | **Classic Desktop** | Windows-style: Fluent-Light GTK/xfwm + Fluent icons, taskbar at the bottom, menu left, clock right, familiar names. |
 | **Gruvbox** | Warm retro palette, panel on the left. |
+| **Blackwork** | Monochrome: Graphite-Dark + Qogir-Dark icons, halftone wallpaper, nearly square corners, dock at the bottom. Night twin of Flash Sheet. |
+| **Flash Sheet** | Gruvbox-Light + Kora icons on a parchment wallpaper with a draft grid and the traditional palette as a test strip; one top panel with a window list, familiar names. |
+| **Neon** | Tokyonight-Dark + Nordzy purple icons, neon-tube wallpaper, the dock down the left edge, unfocused windows at 94 % opacity. |
+| **Sakura** / **Sakura Night** | Rosé Pine Dawn / Moon GTK+xfwm, Nordzy pink icons, BreezeX Rosé Pine cursors, petal wallpapers, 16 px corners; the night twin warms the screen to 4300 K. |
+| **Forest** | Everforest-Dark + Nordzy green icons, misty ridgeline wallpaper, one bottom panel with a window list, standard app names. |
+| **Kanagawa** | Kanagawa-B + Nordzy cyan icons, wave wallpaper, dock at the bottom. |
+
+All wallpapers (gradients, halftone, parchment grid, neon glow, petals,
+ridgelines, waves) plus the boot mark and the lock backdrop come out of
+`pkgs/flattoo-looks/wallpapers/make.py` at build time — numbers in, pixels
+out, nothing to clear rights on.
 
 Icon themes are the open-source WhiteSur (Mac-style) and Fluent (Windows
 11-style) sets from nixpkgs; the familiar-name overrides point office apps at
@@ -27,7 +38,93 @@ the standard `x-office-document/-spreadsheet/-presentation` glyphs, which
 those themes draw in the blue/green/orange people expect.
 
 Every preset carries the **Ask Flattoo** button next to the menu and
-`Super+Space` for it; `Super` alone opens the menu, `Super+P` prints a stencil, `Super+L` opens layouts.
+`Super+Space` for it; `Super` alone opens the menu, `Super+P` prints a stencil,
+`Super+L` opens layouts, `Super+Escape` opens the power sheet.
+
+### Effects, palette, night light, night twin
+
+Beyond theme/icons/panel, a preset can carry:
+
+- `effects` — `{"corners": 12, "shadows": true, "blur": true, "animations":
+  true, "fade": true, "inactive_opacity": 1.0, "shadow_opacity": 0.35,
+  "shadow_color": "#000000"}`, or `false` for xfwm's own compositor.
+  `flattoo-look` turns it into `~/.config/flattoo/picom.conf` (GL) and
+  `picom-xrender.conf` (no blur) with window rules: a centred dock floats
+  (rounded, shadow, blurred), a full-width bar stays square, menus and
+  tooltips get small radii, fullscreen windows, the screensaver and xfwm's
+  own popups get nothing. `flattoo-compositor start|restart|off|status`
+  manages picom: GL first, the xrender variant when GL cannot start (a VM,
+  a driver without GLX), xfwm compositing back on when neither can. An
+  `flock` serialises the autostart entry and the first-login seed. `flattoo-look
+  effects on|off` and Looks → "Window effects" toggle per user;
+  `flattoo.desktop.effects = false` leaves picom out of the system.
+  `flattoo-look picom-conf NAME [--xrender]` prints the config a look makes;
+  `checks.looks-effects` starts picom with every one of them under Xvfb.
+- `palette` — `bg, fg, muted, accent, on_accent, border, card, rofi_bg,
+  radius`. Written at apply time into an xfce4-notifyd theme
+  (`~/.local/share/themes/Flattoo/xfce-notify-4.0/gtk.css`) and a rofi
+  fragment (`~/.config/flattoo/rofi-colors.rasi`, with the look's icon theme)
+  that `flattoo-apps` and `flattoo-power` pass as `-theme-str`. So bubbles,
+  the app grid and the power sheet follow the look.
+- `notify` — `{"position": "top-center", "opacity": 0.96, "theme": …}`
+  (`xfce4-notifyd` `/notify-location`, `/initial-opacity`, `/theme`; the
+  theme defaults to the palette's).
+- `night_light` — kelvin for a one-shot `redshift -P -O`; a look without it
+  resets to neutral, so colour judgement on reference photos is safe by default.
+- `night` — the name of the look's dark twin.
+
+`flattoo-look apply` also records `~/.config/flattoo/current-look`;
+`current-name` prints it, `twin NAME dark|light` resolves the pair.
+
+### Automatic night look (`flattoo-look schedule`)
+
+`schedule set 20:00 07:00 | on | off | status | gui | daemon | tick`. The
+daemon runs from an autostart entry (`flattoo.desktop.nightSchedule`) and
+checks the clock every 30 s; it only acts while `~/.config/flattoo/schedule.json`
+says `enabled`. At the night time it applies the day look's `night` twin
+(the whole look, so the palette, bubbles and effects change too); a day
+look without a twin keeps its colours and gets a warm screen (3800 K); in
+the morning the day look comes back. A look picked by hand becomes the day
+look unless it is just the current twin. `schedule tick --now HH:MM --dry-run`
+says what the daemon would do — that is how `checks.looks-presets` tests it
+without a display. Ask Flattoo understands "dark mode at 9pm", "night look
+from 20:30 to 7", "stop the automatic night look".
+
+### Shop display and Show a Client (`flattoo-showcase`)
+
+- `flattoo-showcase display on|off|status|gui` — xfce4-screensaver's
+  slideshow helper (`libexec/xfce4-screensaver/slideshow`) as the idle
+  screen, pointed at the newest `~/Portfolio/<date>/web` or a chosen folder
+  (`~/.config/flattoo/display.json`). Installed as a screensaver theme
+  (`share/applications/screensavers/flattoo-showcase.desktop`, id
+  `screensavers-flattoo-showcase`); `on` sets `/saver/mode 1` and the theme
+  list, `off` returns to blank. The lock settings are untouched.
+- `flattoo-showcase client [FOLDER]` / `gui` — feh full-screen, auto-advance
+  8 s, tap = next, right button = back, wheel = zoom, with a private feh
+  `keys`/`buttons` config that unbinds everything destructive (delete,
+  remove, save, actions, the menu). Do-not-disturb is set for the
+  duration. When feh exits (Esc) the screen locks (`xflock4` →
+  `xfce4-screensaver-command --lock` → `loginctl lock-session`). No gallery
+  yet → offers to run Portfolio.
+
+### Power sheet (`flattoo-power`)
+
+A rofi dmenu (`share/rofi/power.rasi`, palette from the look): Lock, Sleep,
+Restart, Shut down, Log out, with icons; restart/shut down/log out confirm
+once. XFCE: `xflock4` and `xfce4-session-logout --suspend|--reboot|--halt|
+--logout`; i3: `systemctl` and `i3-msg exit`. Bound to `Super+Escape` in
+every look and in the i3 config; the Home looks put it at the right end of
+the status bar (`powersheet` panel item); Ask Flattoo "turn off" opens it.
+
+### Boot splash and login screen
+
+`flattoo.desktop.bootSplash` (default on): plymouth's `spinner` theme with
+`flattoo-mark.png` as the watermark, `quiet`, `udev.log_level=3`,
+`vt.global_cursor_default=0`, `boot.initrd.verbose = false`; the LUKS
+passphrase is asked on the splash. `flattoo.desktop.loginScreen` (default
+on): LightDM's slick greeter on `lockscreen.png` (the ink gradient with the
+mark), WhiteSur-Dark, Inter, clock, no hostname. Auto-login skips it; it
+shows after a log-out, for the maintainer account, and for a second session.
 
 A preset may carry `panels` (a list; each with `position`, `size`, `icon_size`,
 `length`, `length_adjust`, `background` rgba, and `items` — launcher ids,
@@ -45,8 +142,11 @@ minimizes; four fingers up shows the desktop; pinch zooms. Config seeded to
 (Appearance, Window Manager, Panel settings, `lxappearance`) into a new
 preset under `~/.config/flattoo/looks/`.
 
-Themes shipped: Arc, Materia, Dracula, Nordic, Gruvbox, adw-gtk3, Orchis;
-icons Papirus, Tela, Numix, Adwaita; cursors Bibata, Capitaine, Phinger.
+Themes shipped: WhiteSur, Fluent, Arc, Materia, Dracula, Nordic, Gruvbox,
+adw-gtk3, Orchis, Graphite, Tokyonight, Rosé Pine, Everforest, Kanagawa;
+icons WhiteSur, Fluent, Papirus, Tela, Numix, Adwaita, Qogir, Kora, Nordzy;
+cursors WhiteSur, Bibata, Capitaine, Phinger, Graphite, Rosé Pine, Nordzy,
+Volantes.
 Fonts: Inter, Roboto, Lato, Montserrat, Work Sans, JetBrains Mono, and a
 lettering set — League of Moveable Type, TeX Gyre Chorus (Zapf Chancery),
 Cinzel, Old Standard, EB Garamond, Libertinus, Junicode, Vollkorn, Crimson,

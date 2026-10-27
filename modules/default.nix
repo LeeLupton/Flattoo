@@ -124,6 +124,34 @@ in
         default = true;
         description = "Offer an 'i3 (Flattoo)' tiling session at the login screen next to XFCE.";
       };
+      effects = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Window effects (picom): rounded corners, shadows, blur behind the
+          dock and menus, open/close animations, as each look sets them.
+          Starts at login; Looks → "Window effects" toggles it per user. Off
+          means xfwm's own compositor only.
+        '';
+      };
+      nightSchedule = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Run the automatic night look helper in the session (it does nothing
+          until the artist turns it on under Looks → "Automatic night look").
+        '';
+      };
+      loginScreen = mkOption {
+        type = types.bool;
+        default = true;
+        description = "The Flattoo login screen (slick greeter on the ink backdrop) instead of LightDM's plain GTK greeter.";
+      };
+      bootSplash = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Plymouth with the Flattoo mark: the LUKS passphrase is asked on the splash, no scrolling text.";
+      };
     };
 
     tablet.openTabletDriver = mkEnableOption "OpenTabletDriver for Huion / XP-Pen / Gaomon tablets (replaces the kernel Wacom driver)";

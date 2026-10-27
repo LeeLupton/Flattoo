@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # The app grid: every app as a big icon, phone style. Super key in the Home look.
 # Apps only — drawing, office, web, media, files, and Flattoo's own tools;
-# settings dialogs and setup wizards stay in the menu.
-exec rofi -show drun -theme "@rofi@/apps.rasi" \
+# settings dialogs and setup wizards stay in the menu. Colours come from the
+# current look (flattoo-look writes ~/.config/flattoo/rofi-colors.rasi).
+colors="${XDG_CONFIG_HOME:-$HOME/.config}/flattoo/rofi-colors.rasi"
+extra=()
+[ -s "$colors" ] && extra=(-theme-str "$(cat "$colors")")
+exec rofi -show drun -theme "@rofi@/apps.rasi" "${extra[@]}" \
   -drun-categories "Graphics,Office,Network,AudioVideo,Education,Game,FileManager,X-Flattoo,TextEditor,Calculator,Calendar,Email,Viewer,Scanning,FileTransfer" \
   "$@"

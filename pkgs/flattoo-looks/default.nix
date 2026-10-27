@@ -35,6 +35,14 @@
   xfce4-whiskermenu-plugin,
   xfce4-power-manager,
   xfce4-docklike-plugin,
+  xfce4-session, # xflock4, xfce4-session-logout (the power sheet)
+  xfce4-screensaver, # the slideshow helper the shop display runs, xfce4-screensaver-command
+  picom, # window effects
+  redshift, # the warm screen of the night looks
+  procps,
+  util-linux, # flock
+  shellcheck,
+  league-gothic, # the wordmark on the boot splash
 }:
 let
   py = python3.withPackages (
@@ -64,7 +72,13 @@ let
     glib
     xrandr
     xfdesktop
+    xfce4-session
+    xfce4-screensaver
+    picom
+    redshift
+    procps
   ];
+  slideshow = "${xfce4-screensaver}/libexec/xfce4-screensaver/slideshow";
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "flattoo-looks";
@@ -82,29 +96,56 @@ stdenv.mkDerivation (finalAttrs: {
     runHook preInstall
     mkdir -p $out/bin $out/share/flattoo/looks $out/share/flattoo/layouts $out/share/flattoo/i3 \
              $out/share/flattoo/rofi $out/share/flattoo/touchegg \
-             $out/share/backgrounds/flattoo $out/share/applications $out/share/polkit-1/actions
+             $out/share/backgrounds/flattoo $out/share/applications/screensavers $out/share/polkit-1/actions
 
     cp share/looks/*.json $out/share/flattoo/looks/
     cp share/layouts/*.json $out/share/flattoo/layouts/
     cp share/applications/*.desktop $out/share/applications/
+    cp share/applications/screensavers/*.desktop $out/share/applications/screensavers/
+    substituteInPlace $out/share/applications/screensavers/flattoo-showcase.desktop \
+      --replace-fail 'Exec=flattoo-showcase slideshow' "Exec=$out/bin/flattoo-showcase slideshow" \
+      --replace-fail 'TryExec=flattoo-showcase' "TryExec=$out/bin/flattoo-showcase"
     cp share/polkit-1/actions/*.policy $out/share/polkit-1/actions/
     cp share/rofi/*.rasi $out/share/flattoo/rofi/
     cp share/touchegg/touchegg.conf $out/share/flattoo/touchegg/
-    install -m755 bin/flattoo-apps $out/bin/flattoo-apps
-    substituteInPlace $out/bin/flattoo-apps --replace-fail '@rofi@' "$out/share/flattoo/rofi"
-    patchShebangs $out/bin/flattoo-apps
-    wrapProgram $out/bin/flattoo-apps --prefix PATH : ${lib.makeBinPath [ rofi ]}
+    for tool in flattoo-apps flattoo-power; do
+      install -m755 bin/$tool $out/bin/$tool
+      substituteInPlace $out/bin/$tool --replace-fail '@rofi@' "$out/share/flattoo/rofi"
+      patchShebangs $out/bin/$tool
+      wrapProgram $out/bin/$tool --prefix PATH : ${
+        lib.makeBinPath [
+          rofi
+          xfce4-session
+          xfce4-screensaver
+          systemd
+          procps
+        ]
+      }
+    done
+    install -m755 bin/flattoo-compositor $out/bin/flattoo-compositor
+    patchShebangs $out/bin/flattoo-compositor
+    wrapProgram $out/bin/flattoo-compositor --prefix PATH : ${
+      lib.makeBinPath [
+        picom
+        xfconf
+        procps
+        coreutils
+        util-linux
+      ]
+    }
 
-    python3 wallpapers/make.py $out/share/backgrounds/flattoo 2560 1600
+    FLATTOO_FONT=${league-gothic}/share/fonts/truetype/LeagueGothic-Regular.ttf \
+      python3 wallpapers/make.py $out/share/backgrounds/flattoo 2560 1600
 
     sed -e "s|@wallpaper@|$out/share/backgrounds/flattoo/slate.png|" share/i3/config > $out/share/flattoo/i3/config
     cp share/i3/i3status.conf $out/share/flattoo/i3/
 
-    for tool in flattoo-look flattoo-layout; do
+    for tool in flattoo-look flattoo-layout flattoo-showcase; do
       install -m755 bin/$tool $out/bin/$tool
       substituteInPlace $out/bin/$tool \
         --replace-quiet '@presets@' "$out/share/flattoo/''${tool#flattoo-}s" \
-        --replace-quiet '@wallpapers@' "$out/share/backgrounds/flattoo"
+        --replace-quiet '@wallpapers@' "$out/share/backgrounds/flattoo" \
+        --replace-quiet '@slideshow@' "${slideshow}"
       sed -i "1s|.*|#!${py}/bin/python3|" $out/bin/$tool
       wrapProgram $out/bin/$tool --prefix PATH : $out/bin:${runtimePath}
     done
@@ -127,6 +168,7 @@ stdenv.mkDerivation (finalAttrs: {
             py
             rofi
           ];
+          src = ./.;
         }
         ''
           export HOME=$TMPDIR
@@ -164,18 +206,76 @@ stdenv.mkDerivation (finalAttrs: {
           flattoo-look list | grep -q "Studio Dark"
           flattoo-look list | grep -q "Home"
           # every look names a GTK theme, icon theme and cursor that ship with the system (checked in modules/looks.nix)
-          python3 - ${finalAttrs.finalPackage}/share/flattoo/looks <<'PY'
+          python3 - ${finalAttrs.finalPackage}/share/flattoo/looks ${finalAttrs.finalPackage}/share/backgrounds/flattoo <<'PY'
           import json, os, sys
-          d = sys.argv[1]
+          d, wp = sys.argv[1], sys.argv[2]
+          names = {f[:-5] for f in os.listdir(d)}
+          effect_keys = {"corners", "shadows", "blur", "animations", "fade", "inactive_opacity", "shadow_opacity", "shadow_color"}
+          palette_keys = {"bg", "fg", "muted", "accent", "on_accent", "border", "card", "rofi_bg", "radius"}
+          positions = {"top-left", "bottom-left", "top-right", "bottom-right", "top-center", "bottom-center"}
           for f in os.listdir(d):
               p = json.load(open(os.path.join(d, f)))
-              for k in ("gtk_theme", "xfwm_theme", "icon_theme", "cursor_theme", "wallpaper", "title"):
+              for k in ("gtk_theme", "xfwm_theme", "icon_theme", "cursor_theme", "wallpaper", "title", "palette", "notify"):
                   assert p.get(k), (f, k)
               assert p.get("app_names") in ("familiar", "standard"), f
+              assert os.path.exists(os.path.join(wp, p["wallpaper"] + ".png")), (f, "wallpaper")
+              e = p.get("effects", "missing")
+              assert e is False or (isinstance(e, dict) and set(e) <= effect_keys), (f, "effects", e)
+              assert set(p["palette"]) <= palette_keys, (f, "palette")
+              assert p["notify"].get("position") in positions, (f, "notify")
+              if "night" in p:
+                  assert p["night"] in names and p["night"] != p["name"], (f, "night twin")
+              if "night_light" in p:
+                  assert 2500 <= int(p["night_light"]) <= 6500, (f, "night_light")
+              assert p.get("keyboard", {}).get("<Super>Escape") == "flattoo-power", (f, "power sheet key")
+          for must in ("flattoo-mark.png", "lockscreen.png"):
+              assert os.path.exists(os.path.join(wp, must)), must
+          print(len(names), "looks: effects, palette, notify, night twins ok")
           PY
-          # the app grid theme parses
+          for l in ${finalAttrs.finalPackage}/share/flattoo/looks/*.json; do
+            n=$(basename $l .json)
+            flattoo-look picom-conf $n | grep -qE "^(rules = \(|# this look uses xfwm)"
+            flattoo-look picom-conf $n --xrender | { ! grep -q dual_kawase; }
+          done
+          # the app grid and power sheet themes parse
           rofi -dump-theme -theme ${finalAttrs.finalPackage}/share/flattoo/rofi/apps.rasi >/dev/null
+          rofi -dump-theme -theme ${finalAttrs.finalPackage}/share/flattoo/rofi/power.rasi >/dev/null
           flattoo-layout list | grep -q "Reference + Draw"
+
+          # the automatic night look decides from the clock and the day look's twin (no display needed)
+          mkdir -p $HOME/.config/flattoo
+          echo home > $HOME/.config/flattoo/current-look
+          flattoo-look schedule set 20:00 07:00 | grep -q "dark from 20:00 to 07:00"
+          flattoo-look schedule tick --now 21:00 --dry-run | grep -qx "apply night:home-dark:"
+          flattoo-look schedule tick --now 03:30 --dry-run | grep -qx "apply night:home-dark:"
+          flattoo-look schedule tick --now 08:00 --dry-run | grep -qx "apply day:home:"
+          echo gruvbox > $HOME/.config/flattoo/current-look
+          python3 - <<'PY'
+          import json, os
+          p = os.path.expanduser("~/.config/flattoo/schedule.json")
+          s = json.load(open(p)); s["day_look"] = "gruvbox"; json.dump(s, open(p, "w"))
+          PY
+          flattoo-look schedule tick --now 23:00 --dry-run | grep -qx "apply night::3800"   # no twin: warm screen only
+          flattoo-look schedule set 22:30 6:15 | grep -q "22:30 to 06:15"
+          flattoo-look schedule tick --now 22:00 --dry-run | grep -qx "apply day:gruvbox:"
+          flattoo-look schedule off | grep -q off
+          flattoo-look schedule tick --now 23:00 --dry-run | grep -qx off
+          ! flattoo-look schedule set 25:00 07:00 2>/dev/null
+          flattoo-look twin home dark | grep -qx home-dark
+          flattoo-look twin home-dark light | grep -qx home
+          flattoo-look twin sakura-night light | grep -qx sakura
+          [ -z "$(flattoo-look twin neon dark)" ]
+          flattoo-look current-name | grep -qx gruvbox
+          echo "ok: automatic night look"
+
+          # shop display: the newest gallery Portfolio built wins, a folder of pictures otherwise
+          ! flattoo-showcase folder
+          mkdir -p $HOME/Portfolio/2026-01-02/web $HOME/Portfolio/2026-03-04/web
+          touch $HOME/Portfolio/2026-01-02/web/a.jpg
+          flattoo-showcase folder | grep -q "2026-01-02/web"   # the newer build is empty, the older has pictures
+          touch $HOME/Portfolio/2026-03-04/web/b.png
+          flattoo-showcase folder | grep -q "2026-03-04/web"
+          ${shellcheck}/bin/shellcheck -s bash $src/bin/flattoo-compositor $src/bin/flattoo-power $src/bin/flattoo-apps
 
           # export / restore round trip
           mkdir -p $HOME/.config/xfce4/xfconf/xfce-perchannel-xml $HOME/.config/xfce4/panel/launcher-3 $HOME/.config/flattoo/layouts
@@ -211,6 +311,7 @@ stdenv.mkDerivation (finalAttrs: {
             xfce4-panel
             xfce4-panel-profiles
             xdotool
+            procps
             py
           ];
           XDG_DATA_DIRS = lib.makeSearchPath "share" [
@@ -261,6 +362,52 @@ stdenv.mkDerivation (finalAttrs: {
               fi
             done
             pkill -f xfce4-panel || true
+          SH
+          touch $out
+        '';
+
+    # Every look's generated picom config must start a real picom (both the
+    # GL variant on Xvfb's software GLX and the xrender fallback) and keep
+    # running; a bad rule or an unknown option makes picom exit at once.
+    effects =
+      runCommand "flattoo-looks-effects"
+        {
+          nativeBuildInputs = [
+            finalAttrs.finalPackage
+            xvfb-run
+            picom
+            procps
+          ];
+        }
+        ''
+          export HOME=$TMPDIR
+          cd $TMPDIR
+          xvfb-run -a -s "-screen 0 1280x800x24 +extension Composite +extension GLX" bash -e <<'SH'
+            fail=0
+            for l in ${finalAttrs.finalPackage}/share/flattoo/looks/*.json; do
+              n=$(basename $l .json)
+              flattoo-look picom-conf $n > $n.conf
+              grep -q "xfwm's own compositor" $n.conf && { echo "$n: no picom (xfwm)"; continue; }
+              flattoo-look picom-conf $n --xrender > $n-xrender.conf
+              for variant in "$n.conf glx" "$n-xrender.conf xrender"; do
+                set -- $variant
+                picom --config $1 --backend $2 > $1.log 2>&1 &
+                pid=$!
+                sleep 3
+                if kill -0 $pid 2>/dev/null; then
+                  echo "$n: picom ok ($2)"; kill $pid; wait $pid 2>/dev/null || true
+                elif [ $2 = glx ] && grep -q "No GLX extension" $1.log; then
+                  echo "$n: no GLX on this X server, GL variant parsed only"   # Xvfb has none; the laptop does
+                  continue
+                else
+                  echo "$n: picom DIED ($2)"; cat $1.log; fail=1
+                fi
+                if grep -iE "error|unknown|invalid|unrecognized" $1.log | grep -qv "No GLX extension"; then
+                  echo "$n: picom complained ($2):"; grep -iE "error|unknown|invalid|unrecognized" $1.log; fail=1
+                fi
+              done
+            done
+            exit $fail
           SH
           touch $out
         '';

@@ -42,8 +42,32 @@
     "<Super>l": "flattoo-layout gui",
     "<Super>p": "stencil-print --gui",
     "<Super>space": "flattoo-copilot",
-    "Super_L": "xfce4-popup-whiskermenu"
+    "Super_L": "xfce4-popup-whiskermenu",
+    "<Super>Escape": "flattoo-power"
   },
   "name": "classic-desktop",
-  "app_names": "familiar"
+  "app_names": "familiar",
+  "effects": {
+    "corners": 8,
+    "shadows": true,
+    "blur": true,
+    "animations": true,
+    "shadow_opacity": 0.3
+  },
+  "palette": {
+    "bg": "#f3f3f3",
+    "fg": "#1b1b1b",
+    "muted": "#616161",
+    "accent": "#0067c0",
+    "on_accent": "#ffffff",
+    "border": "#d6d6d6",
+    "card": "rgba(255, 255, 255, 0.80)",
+    "rofi_bg": "rgba(243, 243, 243, 0.94)",
+    "radius": 8
+  },
+  "notify": {
+    "position": "bottom-right",
+    "opacity": 0.98
+  },
+  "night": "studio-dark"
 }

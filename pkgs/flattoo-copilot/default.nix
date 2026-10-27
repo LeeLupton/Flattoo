@@ -105,6 +105,7 @@ stdenv.mkDerivation (finalAttrs: {
           {
             nativeBuildInputs = [
               finalAttrs.finalPackage
+              flattoo-looks # the look names come from flattoo-look list
               py
             ];
           }

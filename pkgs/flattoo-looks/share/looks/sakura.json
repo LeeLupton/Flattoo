@@ -1,0 +1,212 @@
+{
+  "name": "sakura",
+  "title": "Sakura",
+  "description": "Soft and light: rosy paper, petals on the wallpaper, round corners everywhere. Switches to Sakura Night in the evening when the automatic night look is on.",
+  "gtk_theme": "rose-pine-dawn",
+  "xfwm_theme": "rose-pine-dawn",
+  "icon_theme": "Nordzy-pink",
+  "cursor_theme": "BreezeX-RosePineDawn-Linux",
+  "cursor_size": 28,
+  "font": "Inter 11.5",
+  "title_font": "Inter Semi-Bold 11",
+  "wallpaper": "sakura",
+  "workspaces": {
+    "count": 2,
+    "names": [
+      "Home",
+      "Desk"
+    ]
+  },
+  "panels": [
+    {
+      "position": "top",
+      "size": 30,
+      "icon_size": 18,
+      "dark": false,
+      "length": 100,
+      "items": [
+        "clock",
+        "spacer",
+        "tray",
+        "volume",
+        "power",
+        "powersheet"
+      ],
+      "clock": "%-I:%M"
+    },
+    {
+      "position": "bottom-center",
+      "size": 68,
+      "icon_size": 46,
+      "dark": false,
+      "length": 1,
+      "length_adjust": true,
+      "background": [
+        0.99,
+        0.97,
+        0.95,
+        0.84
+      ],
+      "items": [
+        "apps",
+        "files",
+        "photos",
+        "krita",
+        "firefox",
+        "copilot",
+        "sep",
+        "dock"
+      ]
+    }
+  ],
+  "desktop_launchers": [
+    "krita",
+    "mypaint",
+    "inkscape",
+    "rnote",
+    "xournalpp",
+    "files",
+    "photos",
+    "scan",
+    "print",
+    "calibrate",
+    "localsend",
+    "firefox",
+    "copilot",
+    "wiki",
+    "looks",
+    "layouts",
+    "portfolio",
+    "profile",
+    "settings"
+  ],
+  "app_names": "familiar",
+  "xfwm": {
+    "tile_on_move": true,
+    "snap_to_border": true,
+    "focus_delay": 0,
+    "button_layout": "CHM|O",
+    "click_to_focus": true,
+    "titleless_maximize": true,
+    "cycle_minimum": false
+  },
+  "xfconf": [
+    [
+      "thunar",
+      "/misc-single-click",
+      "bool",
+      "true"
+    ],
+    [
+      "thunar",
+      "/last-view",
+      "string",
+      "ThunarIconView"
+    ],
+    [
+      "thunar",
+      "/last-icon-view-zoom-level",
+      "string",
+      "THUNAR_ZOOM_LEVEL_200_PERCENT"
+    ],
+    [
+      "thunar",
+      "/misc-thumbnail-mode",
+      "string",
+      "THUNAR_THUMBNAIL_MODE_ALWAYS"
+    ],
+    [
+      "xfce4-desktop",
+      "/desktop-icons/style",
+      "int",
+      "2"
+    ],
+    [
+      "xfce4-desktop",
+      "/desktop-icons/icon-size",
+      "int",
+      "64"
+    ],
+    [
+      "xfce4-desktop",
+      "/desktop-icons/show-tooltips",
+      "bool",
+      "false"
+    ],
+    [
+      "xfce4-desktop",
+      "/desktop-icons/single-click",
+      "bool",
+      "true"
+    ],
+    [
+      "xfce4-desktop",
+      "/desktop-icons/file-icons/show-home",
+      "bool",
+      "false"
+    ],
+    [
+      "xfce4-desktop",
+      "/desktop-icons/file-icons/show-trash",
+      "bool",
+      "false"
+    ],
+    [
+      "xfce4-desktop",
+      "/desktop-icons/file-icons/show-filesystem",
+      "bool",
+      "false"
+    ],
+    [
+      "xfce4-desktop",
+      "/desktop-icons/file-icons/show-removable",
+      "bool",
+      "true"
+    ],
+    [
+      "xsettings",
+      "/Gtk/DialogsUseHeader",
+      "bool",
+      "true"
+    ],
+    [
+      "xsettings",
+      "/Gtk/ButtonImages",
+      "bool",
+      "true"
+    ]
+  ],
+  "keyboard": {
+    "<Super>Return": "xfce4-terminal",
+    "<Super>e": "thunar",
+    "<Super>k": "krita",
+    "<Super>l": "flattoo-layout gui",
+    "<Super>p": "stencil-print --gui",
+    "<Super>space": "flattoo-copilot",
+    "Super_L": "flattoo-apps",
+    "<Super>Escape": "flattoo-power"
+  },
+  "palette": {
+    "bg": "#faf4ed",
+    "fg": "#575279",
+    "muted": "#797593",
+    "accent": "#d7827e",
+    "on_accent": "#ffffff",
+    "border": "#dfdad9",
+    "card": "rgba(255, 255, 255, 0.80)",
+    "rofi_bg": "rgba(250, 244, 237, 0.92)",
+    "radius": 20
+  },
+  "effects": {
+    "corners": 16,
+    "shadows": true,
+    "blur": true,
+    "animations": true,
+    "shadow_opacity": 0.22
+  },
+  "notify": {
+    "position": "top-center",
+    "opacity": 0.96
+  },
+  "night": "sakura-night"
+}
