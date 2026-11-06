@@ -27,5 +27,11 @@ jobs:
             .#checks.x86_64-linux.looks-presets \
             .#checks.x86_64-linux.copilot-matcher \
             .#checks.x86_64-linux.copilot-admin \
-            .#checks.x86_64-linux.copilot-catalog
+            .#checks.x86_64-linux.copilot-catalog \
+            .#checks.x86_64-linux.looks-effects \
+            .#checks.x86_64-linux.looks-panel-load \
+            .#checks.x86_64-linux.looks-i3config \
+            .#checks.x86_64-linux.wiki-content \
+            .#checks.x86_64-linux.assist-offline \
+            .#checks.x86_64-linux.site
       - run: nix fmt -- --check $(git ls-files '*.nix')

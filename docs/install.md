@@ -110,3 +110,16 @@ login password does not change the disk passphrase.
 * Laptop boots to a black screen after an upgrade: at the boot menu pick the
   previous generation. Then look at `journalctl -b -1 -p err` as `lee`.
 * Forgot the LUKS passphrase: the data is gone. Reinstall.
+
+## Without the keyboard: fingerprint and a FIDO2 key
+
+Both are off until enrolled; see [docs/touch.md](touch.md).
+
+* Fingerprint: set `flattoo.desktop.fingerprint = true`, rebuild, then as the
+  maintainer `sudo fprintd-enroll artist`. The lock screen, the login screen
+  and sudo accept the finger; the password keeps working.
+* FIDO2 key for the disk: set `flattoo.disk.fido2 = true`, rebuild, plug the
+  key in and run `sudo systemd-cryptenroll --fido2-device=auto
+  /dev/disk/by-partlabel/disk-main-luks`. At boot the splash waits ten
+  seconds for a key (plug in, touch) and falls back to the passphrase.
+  `systemd-cryptenroll --wipe-slot=fido2 <device>` removes it.
