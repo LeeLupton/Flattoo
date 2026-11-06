@@ -136,8 +136,21 @@ let
         m = m or studio
         artist("xdotool mousemove 5 5 mousemove 640 400", m, check=False)
         m.sleep(1)
+        rc, _ = m.execute("pgrep -u artist -f xfce4-panel")
+        if rc != 0:
+            print(f"{name}: the panel is not running at capture time")
+        rc, wins = m.execute("su artist -c 'DISPLAY=:0 xdotool search --onlyvisible --name . getwindowname %@' 2>/dev/null | sort -u | tr '\n' '|'")
+        print(f"{name}: visible windows: {wins[:300]}")
         m.screenshot(name)
         captions[name] = caption
+
+    def bg_logged(cmd, m=None):
+        """Like bg, keeping stderr for the launcher so a missing window can be explained."""
+        artist(cmd + " >/home/artist/.cache/flattoo-last-launch.log 2>&1 &", m or studio)
+
+    def launch_log(m=None):
+        rc, out = (m or studio).execute("tail -20 /home/artist/.cache/flattoo-last-launch.log 2>/dev/null")
+        print("launcher output:", out[-800:])
 
     def wait_window(pattern, m=None, timeout=300):
         """A window whose title matches pattern exists (zenity is slow to start under TCG)."""
@@ -245,14 +258,14 @@ pkgs.testers.runNixOSTest {
     wait_panel()
 
     # The app grid (Super key in the Home look)
-    bg("flattoo-apps")
-    wait_window("rofi")
+    bg_logged("flattoo-apps")
+    wait_window("rofi") or launch_log()
     shot("apps-grid", "The Super key, or the grid button on the dock: every app as an icon. Type a few letters to filter.")
     close_dialogs()
 
     # The power sheet (Super+Escape, the power icon in the top bar)
-    bg("flattoo-power")
-    wait_window("rofi")
+    bg_logged("flattoo-power")
+    wait_window("rofi") or launch_log()
     shot("power-sheet", "Super+Escape, or the power icon at the right of the top bar: Lock, Sleep, Restart, Shut down, Log out. Restart and shut down ask once more.")
     close_dialogs()
 
@@ -265,8 +278,8 @@ pkgs.testers.runNixOSTest {
     close_dialogs()
 
     # Ask Flattoo: the tap sheet first, the text box behind "Type something else"
-    bg("flattoo-copilot")
-    wait_window("rofi")
+    bg_logged("flattoo-copilot")
+    wait_window("rofi") or launch_log()
     shot("ask-flattoo", "Ask Flattoo: the things people ask, as rows to tap. Typing filters them; the last row is a text box.")
     close_dialogs()
     bg("flattoo-copilot --typed")
@@ -342,6 +355,8 @@ pkgs.testers.runNixOSTest {
     studio.sleep(10)
     shot("layout-reference-and-draw", "Reference + Draw: Krita on the left, the image viewer on the right for the reference.")
     studio.execute("pkill -f krita; pkill -f ristretto; true")
+    # what the session complained about, for the next person reading this log
+    print("### session noise: " + studio.execute("journalctl -b --no-pager | grep -iE 'xfce4-panel|segfault|rofi|picom|onboard|flattoo-' | grep -vE 'g_hash_table|Successful su|session opened|session closed' | tail -60")[1])
     studio.sleep(5)
     bg("flattoo-layout apply paperwork")
     studio.wait_until_succeeds("su artist -c 'DISPLAY=:0 xdotool search --class firefox'", timeout=900)

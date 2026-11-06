@@ -56,6 +56,11 @@ in
       programs.dconf.profiles.user.databases = [
         {
           settings = {
+            # auto-show needs the GTK accessibility bridge; without this onboard
+            # asks "Enable accessibility now?" in a modal at every login
+            "org/gnome/desktop/interface" = {
+              toolkit-accessibility = true;
+            };
             "org/onboard" = {
               use-system-defaults = false;
               layout = "Phone";

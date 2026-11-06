@@ -123,6 +123,15 @@ in
     NoDisplay=true
   '';
 
+  # picom's package ships its own autostart entry that runs a bare `picom`
+  # (no backend, no config) at every login; the compositor is ours to start.
+  environment.etc."xdg/autostart/picom.desktop".text = ''
+    [Desktop Entry]
+    Type=Application
+    Name=picom
+    Hidden=true
+  '';
+
   # Window effects: picom with the config the current look wrote, started
   # after the panel (so the dock's translucency is already there to blur
   # behind). The i3 session starts it from its own config.

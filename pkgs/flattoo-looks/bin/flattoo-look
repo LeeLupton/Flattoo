@@ -786,6 +786,8 @@ def set_wallpaper(path):
         xq_set("xfce4-desktop", prop, "string", path)
         xq_set("xfce4-desktop", prop.replace("last-image", "image-style"), "int", 5)  # zoomed
     run(["xfdesktop", "--reload"])
+    time.sleep(1.5)
+    run(["xfdesktop", "--reload"])  # a reload that lands mid-change is not repainted; the second one is
 
 
 def apply_panel(panel):
