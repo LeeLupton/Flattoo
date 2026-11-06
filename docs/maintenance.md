@@ -109,13 +109,11 @@ artwork or other personal files.
 
 ## Website and releases
 
-* **Website** (`.github/workflows/pages.yml`): built with `nix build .#site`
-  from the `pages` branch and deployed to GitHub Pages — landing page with
-  the download button, Help & How-To, rendered docs. `main` is where work
-  lands; nothing reaches the site until `pages` moves. Publish with Actions
-  → *promote to pages* → Run workflow (fast-forward only; a ref other than
-  main can be given), or `git push origin main:pages`. One-time: repo
-  Settings → Pages → Source: *GitHub Actions*.
+* **Website** (`.github/workflows/pages.yml`): every push to `main` that
+  touches the wiki, docs, README or the site packages builds `nix build
+  .#site` and deploys it to GitHub Pages — landing page with the download
+  button, Help & How-To, rendered docs. One-time: repo Settings → Pages →
+  Source: *GitHub Actions*.
 
 ## Adding software
 
