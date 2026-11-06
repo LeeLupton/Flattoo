@@ -109,15 +109,13 @@ artwork or other personal files.
 
 ## Website and releases
 
-* **Website** (`.github/workflows/pages.yml`): every push that touches the
-  wiki, docs or README rebuilds `nix build .#site` and publishes it to GitHub
-  Pages — landing page with the download button, Help & How-To, rendered
-  docs. One-time: repo Settings → Pages → Source: *GitHub Actions*.
-* **Releases** (`.github/workflows/release.yml`): `git tag v2026.10.1 && git
-  push origin v2026.10.1` builds the installer ISO and attaches it with
-  `SHA256SUMS` to a GitHub Release; the site's Download button points at the
-  latest. Running the workflow by hand makes a pre-release named by the
-  build number. Assets must stay under 2 GiB.
+* **Website** (`.github/workflows/pages.yml`): built with `nix build .#site`
+  from the `pages` branch and deployed to GitHub Pages — landing page with
+  the download button, Help & How-To, rendered docs. `main` is where work
+  lands; nothing reaches the site until `pages` moves. Publish with Actions
+  → *promote to pages* → Run workflow (fast-forward only; a ref other than
+  main can be given), or `git push origin main:pages`. One-time: repo
+  Settings → Pages → Source: *GitHub Actions*.
 
 ## Adding software
 

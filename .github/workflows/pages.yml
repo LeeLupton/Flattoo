@@ -1,20 +1,16 @@
 # The website: landing page, Help & How-To wiki, rendered docs. Built with
 # `nix build .#site`, served by GitHub Pages. One-time setup in the repo:
 # Settings → Pages → Source: "GitHub Actions".
+#
+# Two branches: `main` is where work lands; `pages` is what the site shows.
+# The site is built from the `pages` branch only, so a push to main never
+# changes the public site by itself. To publish, fast-forward pages to main:
+# Actions → "promote to pages" → Run workflow (or `git push origin main:pages`).
 name: pages
 
 on:
   push:
-    branches: [main]
-    paths:
-      - "wiki/**"
-      - "docs/**"
-      - "README.md"
-      - "pkgs/flattoo-wiki/**"
-      - "pkgs/flattoo-site/**"
-      - "pkgs/flattoo-copilot/**"
-      - "flake.*"
-      - ".github/workflows/pages.yml"
+    branches: [pages]
   workflow_dispatch:
 
 permissions:
@@ -31,6 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: pages
       - uses: cachix/install-nix-action@v31
         with:
           extra_nix_config: |
