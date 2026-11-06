@@ -51,6 +51,8 @@ flock -w 20 9 || true
 case "${1:-start}" in
   start|restart)
     mode=$(cat "$CFG/compositor" 2>/dev/null || echo picom)
+    # flattoo.desktop.effects = false: xfwm's compositor whatever the look asks for
+    [ -e /etc/flattoo/no-effects ] && mode=xfwm
     if [ "${1:-start}" = start ] && [ "$mode" != xfwm ] && pgrep -u "$(id -u)" -x picom >/dev/null; then
       echo "picom already running"
       exit 0

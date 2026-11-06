@@ -123,6 +123,10 @@ in
     NoDisplay=true
   '';
 
+  # With effects off, the looks' effects settings are ignored by
+  # flattoo-compositor (xfwm's compositor only).
+  environment.etc."flattoo/no-effects" = lib.mkIf (!cfg.desktop.effects) { text = ""; };
+
   # picom's package ships its own autostart entry that runs a bare `picom`
   # (no backend, no config) at every login; the compositor is ours to start.
   environment.etc."xdg/autostart/picom.desktop".text = ''

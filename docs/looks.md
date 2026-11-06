@@ -57,7 +57,9 @@ Beyond theme/icons/panel, a preset can carry:
   a driver without GLX), xfwm compositing back on when neither can. An
   `flock` serialises the autostart entry and the first-login seed. `flattoo-look
   effects on|off` and Looks → "Window effects" toggle per user;
-  `flattoo.desktop.effects = false` leaves picom out of the system.
+  `flattoo.desktop.effects = false` leaves picom out of the system and
+  writes `/etc/flattoo/no-effects`, which makes flattoo-compositor keep
+  xfwm's compositor whatever a look asks for.
   `flattoo-look picom-conf NAME [--xrender]` prints the config a look makes;
   `checks.looks-effects` starts picom with every one of them under Xvfb.
 - `palette` — `bg, fg, muted, accent, on_accent, border, card, rofi_bg,

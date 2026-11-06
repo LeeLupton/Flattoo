@@ -100,6 +100,9 @@ let
       users.users.lee.initialPassword = "lee";
       users.users.root.hashedPassword = lib.mkForce null; # the test harness sets root's password itself
       boot.blacklistedKernelModules = [ "floppy" ]; # no "Floppy Disk" icon on the desktop
+      # Software-rendered VM: picom repaints seconds late and the screenshots
+      # show stale frames. xfwm's own compositor still gives shadows.
+      flattoo.desktop.effects = false;
       environment.etc."flattoo/sample-stencil.png".source = "${sample}/sample-stencil.png";
       environment.systemPackages = [
         pkgs.xdotool
