@@ -168,9 +168,17 @@ let
             return False
 
     def wait_panel(m=None):
+        """The panel is up and every panel the profile declares has a window."""
         m = m or studio
         m.wait_until_succeeds("pgrep -u artist -f xfce4-panel", timeout=600)
-        m.sleep(25)
+        m.sleep(20)
+        for _ in range(12):
+            rc, want = m.execute("su artist -c 'DISPLAY=:0 xfconf-query -c xfce4-panel -p /panels' 2>/dev/null | grep -cE '^[0-9]+$'")
+            rc, have = m.execute("su artist -c 'DISPLAY=:0 xdotool search --onlyvisible --class xfce4-panel' 2>/dev/null | wc -l")
+            if want.strip().isdigit() and have.strip().isdigit() and int(have) >= int(want) > 0:
+                break
+            m.sleep(5)
+        m.sleep(5)
 
     def scene(m=None):
         """What a look is photographed with: the wallpaper, the dock, Photos
@@ -183,6 +191,8 @@ let
         if rc != 0:
             bg("ristretto /etc/flattoo/sample-stencil.png", m)
             wait_window("Image Viewer", m)
+            m.wait_until_succeeds("su artist -c 'DISPLAY=:0 xdotool search --onlyvisible --name \"Image Viewer\"'", timeout=120)
+            m.sleep(5)
         artist("wmctrl -r 'Image Viewer' -b remove,maximized_vert,maximized_horz", m, check=False)
         artist("wmctrl -r 'Image Viewer' -e 0,520,140,1100,780", m, check=False)
         artist("wmctrl -a 'Image Viewer'", m, check=False)

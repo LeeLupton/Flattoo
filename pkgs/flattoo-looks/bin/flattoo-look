@@ -239,7 +239,12 @@ def panel_profile_tar(panel, out_path):
 
 
 def find_desktop_file(desktop_id, stub=True):
-    """Contents of a system .desktop file by id; a stub if not installed (or None)."""
+    """Contents of a .desktop file by id — the user's familiar-name override
+    first, then the system's; a stub if not installed (or None)."""
+    override = os.path.join(USER_APPS, desktop_id)
+    if os.path.exists(override):
+        with open(override, "rb") as f:
+            return f.read()
     for base in os.environ.get("XDG_DATA_DIRS", "/run/current-system/sw/share:/usr/share").split(":"):
         p = os.path.join(base, "applications", desktop_id)
         if os.path.exists(p):
@@ -290,6 +295,7 @@ def apply_live(p, quiet=False, scheduled=False):
         set_wallpaper(resolve_wallpaper(p["wallpaper"]))
         make_backdrop(resolve_wallpaper(p["wallpaper"]), p.get("dark", True))
         run(["flattoo-showcase", "backdrop-saver"])  # the lock screen shows it (unless the shop display is on)
+    apply_app_names(p.get("app_names"))  # before the panel: launchers take the familiar name and icon
     if "panels" in p:
         apply_panel(p["panels"])
     elif "panel" in p:
@@ -299,7 +305,6 @@ def apply_live(p, quiet=False, scheduled=False):
             xq_set("xfce4-keyboard-shortcuts", f"/commands/custom/{combo}", "string", cmd)
     for channel, prop, typ, value in p.get("xfconf", []):
         xq_set(channel, prop, typ, value)
-    apply_app_names(p.get("app_names"))
     apply_desktop_launchers(p.get("desktop_launchers"))
     if p.get("name"):
         os.makedirs(FLATTOO_CFG, exist_ok=True)
