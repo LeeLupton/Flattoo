@@ -32,8 +32,40 @@
     "caption": "Gruvbox: warm retro colors, panel on the left edge to keep the canvas wide."
   },
   {
+    "file": "look-blackwork.png",
+    "caption": "Blackwork: black, white and grey, halftone shading on the wallpaper, a dock at the bottom."
+  },
+  {
+    "file": "look-flash.png",
+    "caption": "Flash Sheet: parchment with a draft grid and the traditional palette, one panel on top like a desk. Becomes Blackwork at night."
+  },
+  {
+    "file": "look-neon.png",
+    "caption": "Neon: a dark studio wall with neon tubes, the dock down the left side, windows a touch see-through when not in front."
+  },
+  {
+    "file": "look-sakura.png",
+    "caption": "Sakura: soft rosy paper and petals, round corners everywhere. Becomes Sakura Night in the evening."
+  },
+  {
+    "file": "look-sakura-night.png",
+    "caption": "Sakura Night: plum sky, a moon, petals in pink and lavender, a warmer screen."
+  },
+  {
+    "file": "look-forest.png",
+    "caption": "Forest: misty ridgelines in green-grey, one panel at the bottom with a window list. Calm, for long sessions."
+  },
+  {
+    "file": "look-kanagawa.png",
+    "caption": "Kanagawa: deep water blues, foam-white text, a gold accent, waves on the wallpaper."
+  },
+  {
     "file": "apps-grid.png",
     "caption": "The Super key, or the grid button on the dock: every app as an icon. Type a few letters to filter."
+  },
+  {
+    "file": "power-sheet.png",
+    "caption": "Super+Escape, or the power icon at the right of the top bar: Lock, Sleep, Restart, Shut down, Log out. Restart and shut down ask once more."
   },
   {
     "file": "menu.png",
@@ -41,7 +73,7 @@
   },
   {
     "file": "ask-flattoo.png",
-    "caption": "Ask Flattoo: type what you need in plain words."
+    "caption": "Ask Flattoo: the things people ask, as rows to tap. Typing filters them; the last row is a text box."
   },
   {
     "file": "ask-flattoo-paint.png",
@@ -72,19 +104,39 @@
     "caption": "Print as Stencil with no stencil printer attached: it offers the other printers at true size instead. With the stencil printer on, it asks for width on skin, mirror, crisp lines or shading, copies."
   },
   {
-    "file": "files-right-click.png",
-    "caption": "Right-click an image in Files: Print as Stencil, Clean Lines, Open in Krita."
+    "file": "fix-printer.png",
+    "caption": "Fix Stencil Printer: it looks over USB, Wi-Fi and Bluetooth and says what it found \u2014 here, with no printer attached, what you see when it finds nothing."
   },
   {
-    "file": "layout-reference-and-draw.png",
-    "caption": "Reference + Draw: Krita on the left, the image viewer on the right for the reference."
+    "file": "bluetooth-printer.png",
+    "caption": "Add Bluetooth Stencil Printer, from the menu or Ask Flattoo. With the printer on and blinking, it lists it; pick it and type the PIN if asked."
+  },
+  {
+    "file": "network-printer.png",
+    "caption": "Add Network Stencil Printer: it sweeps the shop Wi-Fi for printers and lists what it finds, or takes an address."
+  },
+  {
+    "file": "files-right-click.png",
+    "caption": "Right-click an image in Files: Print as Stencil, Clean Lines, Open in Krita."
   },
   {
     "file": "layout-paperwork.png",
     "caption": "Paperwork: Firefox on the left, Files on the right."
   },
   {
+    "file": "lock-screen.png",
+    "caption": "The lock screen after the lid closes or ten idle minutes: the password is the disk passphrase unless the installer was told otherwise."
+  },
+  {
     "file": "i3-desktop.png",
     "caption": "The i3 tiling session (pick it at the login screen): bar at the bottom, Super+D to launch, Super+Space for Ask Flattoo."
+  },
+  {
+    "file": "i3-rofi.png",
+    "caption": "Super+D in the i3 session: the same app grid, type the first letters of an app."
+  },
+  {
+    "file": "layout-reference-and-draw.png",
+    "caption": "Reference + Draw: Krita on the left, the image viewer on the right for the reference."
   }
 ]
