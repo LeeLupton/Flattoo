@@ -107,7 +107,13 @@ stdenv.mkDerivation (finalAttrs: {
 
   meta = {
     description = "Flattoo help: plain-English pages with screenshots, indexed for Ask Flattoo";
-    license = lib.licenses.mit;
+    license = {
+      shortName = "FSAL-1.0";
+      fullName = "Flattoo Source-Available License 1.0";
+      url = "https://github.com/LeeLupton/Flattoo/blob/main/LICENSE";
+      free = false;
+      redistributable = true;
+    };
     platforms = lib.platforms.linux;
     mainProgram = "flattoo-wiki";
   };

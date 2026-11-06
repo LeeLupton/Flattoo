@@ -1,0 +1,122 @@
+FLATTOO SOURCE-AVAILABLE LICENSE
+Version 1.0, November 2026
+
+Copyright (c) 2026 Michael Lee Lupton. All rights reserved.
+
+This license covers the Flattoo repository: its Nix expressions, modules,
+scripts, tools, generated wallpapers and marks, documentation and help
+pages (the "Software"). It does not cover the third-party components the
+Software builds on (NixOS, nixpkgs, Krita, XFCE, picom, whisper.cpp and
+the rest); each of those stays under its own license, listed in NOTICE.
+
+1. DEFINITIONS
+
+   "Principal Holder" means the person or entity holding the largest
+   ownership interest in the Flattoo project, as recorded in Schedule A.
+   On the date of this version that is Michael Lee Lupton. A change of
+   the Principal Holder is made by amending Schedule A in the official
+   repository, signed by the outgoing Principal Holder.
+
+   "Flattoo System Design" means the specific combination this Software
+   implements and documents: a NixOS flake as the whole of a laptop
+   (one repository is the machine, nightly signed upgrades, rollback by
+   boot entry); a plain-language assistant restricted to a fixed allowlist
+   of actions with a privileged helper behind polkit and an optional model
+   that may only choose among those actions; the network edge of
+   prefix-sanity filtering, a validating resolver with encrypted upstreams
+   and local reverse zones, and a dispatcher that keeps DNS working on
+   captive networks; the minimal-and-robust footing (no terminal for the
+   user, every change declarative, every tool tested offline); and the
+   looks engine, lock, show-a-client, shop-display and keyboard-free
+   provisions, as a system for a non-technical professional's work
+   machine.
+
+   "Commercial Use" means selling, licensing, renting or offering for a fee
+   the Software or a derivative of it; preinstalling it on hardware that is
+   sold; offering it as a hosted, managed or supported service; or using
+   it to deliver a paid product whose value is the Flattoo System Design.
+
+   "You" means anyone exercising rights under this license.
+
+2. WHAT YOU MAY DO
+
+   Subject to section 3, the Principal Holder grants You a worldwide,
+   royalty-free, non-exclusive, non-transferable license to:
+
+   a. use the Software, build it, and run the systems it describes, for
+      Yourself, Your household, Your own studio or shop, or a client You
+      personally set it up for without charging for the Software itself;
+   b. study and modify the Software;
+   c. redistribute the Software and Your modifications, in source form,
+      under this same license, with this file, NOTICE and the copyright
+      notices intact and Your changes clearly marked;
+   d. contribute changes back; by contributing You license Your
+      contribution to the Principal Holder under this license and grant
+      the Principal Holder the right to relicense it as part of the
+      Software.
+
+3. WHAT IS RESERVED TO THE PRINCIPAL HOLDER
+
+   a. Commercial Use of the Software or of the Flattoo System Design as
+      implemented by the Software is reserved to the Principal Holder.
+      Anyone else needs a separate written license from the Principal
+      Holder. The Principal Holder may grant such licenses, exclusively or
+      not, on any terms.
+   b. The names "Flattoo", the Flattoo mark (the registration-mark emblem
+      and the wordmark), and the look names shipped with the Software may
+      not be used to name, brand or promote a derivative without written
+      permission. A derivative distributed under another name must say
+      that it is derived from Flattoo and link to the official repository.
+   c. Removing, bypassing or weakening the security provisions of the
+      Flattoo System Design (the action allowlist of the assistant, the
+      signature gate on upgrades, the lock, the network edge) in a
+      redistributed derivative, while still presenting it as Flattoo or as
+      suitable for a non-technical user, is not permitted.
+
+4. PATENTS AND OTHER RIGHTS
+
+   To the extent the Principal Holder holds or obtains patent rights that
+   read on the Software, the license in section 2 includes those rights
+   for the uses section 2 permits, and terminates for anyone who brings a
+   patent claim against the Principal Holder or a licensee concerning the
+   Software. Nothing here transfers ownership. Trade secrets, if any, in
+   material the Principal Holder has not published are not licensed.
+
+5. TERMINATION
+
+   This license ends automatically if You breach section 3. It is
+   reinstated if You cure the breach within thirty days of notice, once.
+   Sections 3, 6 and 7 survive termination. Copies lawfully received by
+   others before termination keep their license.
+
+6. NO WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+   OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE
+   AND NON-INFRINGEMENT. It configures disk encryption, firewalls, printing
+   and automatic upgrades on real machines; You are responsible for
+   verifying it on Yours.
+
+7. NO LIABILITY
+
+   IN NO EVENT SHALL THE PRINCIPAL HOLDER OR ANY CONTRIBUTOR BE LIABLE FOR
+   ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR
+   OTHERWISE, ARISING FROM OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+8. GOVERNING LAW
+
+   This license is governed by the laws of the State of North Carolina,
+   United States, without regard to its conflict-of-laws rules. Disputes
+   are brought in the state or federal courts sitting in Carteret County,
+   North Carolina.
+
+9. VERSIONS
+
+   The Principal Holder may publish new versions of this license. Software
+   received under version 1.0 stays under version 1.0 unless the Principal
+   Holder relicenses it. The official repository is
+   https://github.com/LeeLupton/Flattoo.
+
+SCHEDULE A — PRINCIPAL HOLDER
+
+   Michael Lee Lupton (lee@lupton.dev), 100 percent, from 2026-11-06.

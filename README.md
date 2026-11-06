@@ -357,3 +357,12 @@ nothing in the base image), copilot LLM provider (`none` / `anthropic` /
 fallback, signed-only repo syncs (`autoUpgrade.allowedSigners`), Tailscale,
 SSH, upgrade time, latest kernel. Written on the machine, not in git: `apps.nix` (Ask
 Flattoo) and `look.nix` + `look/` (Lock This Setup).
+
+## License
+
+Flattoo's own files are under the [Flattoo Source-Available License](LICENSE):
+use it, build it, change it and share it for your own shop or someone you set
+it up for; selling it, preinstalling it on hardware for sale, or offering it
+as a service is reserved to the project's principal holder (Schedule A in the
+license). Everything it builds on — NixOS, XFCE, Krita and the rest — keeps
+its own license; see [NOTICE](NOTICE).

@@ -216,7 +216,13 @@ stdenv.mkDerivation (finalAttrs: {
 
   meta = {
     description = "Print tattoo stencils at true size; clean scanned sketches; calibrate and auto-configure the stencil printer; tablet and HiDPI session helpers";
-    license = lib.licenses.mit;
+    license = {
+      shortName = "FSAL-1.0";
+      fullName = "Flattoo Source-Available License 1.0";
+      url = "https://github.com/LeeLupton/Flattoo/blob/main/LICENSE";
+      free = false;
+      redistributable = true;
+    };
     platforms = lib.platforms.linux;
     mainProgram = "stencil-print";
   };

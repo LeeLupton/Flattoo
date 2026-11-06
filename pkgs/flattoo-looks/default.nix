@@ -463,7 +463,13 @@ stdenv.mkDerivation (finalAttrs: {
 
   meta = {
     description = "Flattoo desktop looks, window layouts, i3 session and the setup lock";
-    license = lib.licenses.mit;
+    license = {
+      shortName = "FSAL-1.0";
+      fullName = "Flattoo Source-Available License 1.0";
+      url = "https://github.com/LeeLupton/Flattoo/blob/main/LICENSE";
+      free = false;
+      redistributable = true;
+    };
     platforms = lib.platforms.linux;
     mainProgram = "flattoo-look";
   };
