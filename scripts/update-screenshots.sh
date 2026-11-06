@@ -17,11 +17,17 @@ fi
 # The test derivation asks for the kvm feature; QEMU falls back to TCG by itself.
 features="kvm $features"
 
-out=$(nix build --no-link --print-out-paths --option system-features "$features" .#screenshots)
+# Two halves (looks, dialogs+i3): each stays under the time a non-KVM build
+# gets; their index.json files are merged.
+looks=$(nix build --no-link --print-out-paths --option system-features "$features" .#screenshots-looks)
+dialogs=$(nix build --no-link --print-out-paths --option system-features "$features" .#screenshots-dialogs)
 mkdir -p wiki/screenshots
 rm -f wiki/screenshots/*.png
-cp "$out"/*.png wiki/screenshots/
-cp "$out"/index.json wiki/screenshots/index.json
+cp "$looks"/*.png "$dialogs"/*.png wiki/screenshots/
+python3 - "$looks/index.json" "$dialogs/index.json" > wiki/screenshots/index.json <<'PY'
+import json, sys
+print(json.dumps(json.load(open(sys.argv[1])) + json.load(open(sys.argv[2])), indent=2))
+PY
 chmod 644 wiki/screenshots/*
 echo "copied $(ls wiki/screenshots/*.png | wc -l) screenshots from $out"
 nix build --no-link .#flattoo-wiki

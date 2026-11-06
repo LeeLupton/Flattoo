@@ -83,6 +83,15 @@
         site = pkgs.flattoo-site.override { version = self.shortRev or self.dirtyShortRev or "dev"; };
         # Desktop screenshots for the wiki, taken in a VM: `nix build .#screenshots`
         screenshots = import ./tests/screenshots.nix { inherit pkgs self disko; };
+        # the same run in two halves, each under the two hours a build without KVM gets
+        screenshots-looks = import ./tests/screenshots.nix {
+          inherit pkgs self disko;
+          part = "looks";
+        };
+        screenshots-dialogs = import ./tests/screenshots.nix {
+          inherit pkgs self disko;
+          part = "dialogs";
+        };
         default = pkgs.stencil-tools;
       };
 

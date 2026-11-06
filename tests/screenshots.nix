@@ -12,10 +12,14 @@
 # it without anyone editing paths by hand.
 #
 # Without KVM (CI, this sandbox) the VM runs under TCG: slow, but it works.
+# `part`: "all", "looks" (the fifteen looks) or "dialogs" (everything else,
+# including the i3 session). The split keeps each run well under the two
+# hours a non-KVM build gets; scripts/update-screenshots.sh merges them.
 {
   pkgs,
   self,
   disko,
+  part ? "all",
 }:
 let
   lib = pkgs.lib;
@@ -212,7 +216,7 @@ let
   '';
 in
 pkgs.testers.runNixOSTest {
-  name = "flattoo-screenshots";
+  name = "flattoo-screenshots${lib.optionalString (part != "all") "-${part}"}";
   node.pkgsReadOnly = false;
   # Fifteen composed looks, the dialogs and a second session, under TCG
   # when there is no KVM: well over the driver's one-hour default.
@@ -247,149 +251,163 @@ pkgs.testers.runNixOSTest {
     wait_desktop()
     studio.sleep(10)
 
-    ${lib.concatMapStringsSep "\n" (l: ''
-      artist("flattoo-look apply ${l}")
-      wait_panel()
-      scene()
-      shot("look-${l}", ${builtins.toJSON lookCaptions.${l}})
-    '') looks}
-    studio.execute("pkill -f ristretto; true")
-    artist("flattoo-look apply home")
-    wait_panel()
+    PART = ${builtins.toJSON part}
+    LOOKS = ${
+      builtins.toJSON (
+        map (l: [
+          l
+          lookCaptions.${l}
+        ]) looks
+      )
+    }
 
-    # The app grid (Super key in the Home look)
-    bg_logged("flattoo-apps")
-    wait_window("rofi") or launch_log()
-    shot("apps-grid", "The Super key, or the grid button on the dock: every app as an icon. Type a few letters to filter.")
-    close_dialogs()
+    if PART in ("all", "looks"):
+        for look, caption in LOOKS:
+            artist("flattoo-look apply " + look)
+            wait_panel()
+            scene()
+            shot("look-" + look, caption)
+        studio.execute("pkill -f ristretto; true")
 
-    # The power sheet (Super+Escape, the power icon in the top bar)
-    bg_logged("flattoo-power")
-    wait_window("rofi") or launch_log()
-    shot("power-sheet", "Super+Escape, or the power icon at the right of the top bar: Lock, Sleep, Restart, Shut down, Log out. Restart and shut down ask once more.")
-    close_dialogs()
+    if PART == "looks":
+        studio.shutdown()
+    else:
+        artist("flattoo-look apply home")
+        wait_panel()
 
-    # Menu
-    artist("flattoo-look apply studio-dark")
-    wait_panel()
-    bg("xfce4-popup-whiskermenu")
-    wait_window("Whisker Menu")
-    shot("menu", "The menu (top-left button, or the Super key): every app by category, search box at the top.")
-    close_dialogs()
+        # The app grid (Super key in the Home look)
+        bg_logged("flattoo-apps")
+        wait_window("rofi") or launch_log()
+        shot("apps-grid", "The Super key, or the grid button on the dock: every app as an icon. Type a few letters to filter.")
+        close_dialogs()
 
-    # Ask Flattoo: the tap sheet first, the text box behind "Type something else"
-    bg_logged("flattoo-copilot")
-    wait_window("rofi") or launch_log()
-    shot("ask-flattoo", "Ask Flattoo: the things people ask, as rows to tap. Typing filters them; the last row is a text box.")
-    close_dialogs()
-    bg("flattoo-copilot --typed")
-    wait_window("Ask Flattoo")
-    shot("ask-flattoo-typed", "Behind “Type something else…”: say what you need in plain words. The on-screen keyboard pops up for people who do not use the real one.")
-    close_dialogs()
-    bg("flattoo-copilot 'something like paint'")
-    wait_window("Ask Flattoo")
-    shot("ask-flattoo-paint", "Ask Flattoo answering 'something like paint': the drawing apps that fit this laptop, Open or Install.")
-    close_dialogs()
+        # The power sheet (Super+Escape, the power icon in the top bar)
+        bg_logged("flattoo-power")
+        wait_window("rofi") or launch_log()
+        shot("power-sheet", "Super+Escape, or the power icon at the right of the top bar: Lock, Sleep, Restart, Shut down, Log out. Restart and shut down ask once more.")
+        close_dialogs()
 
-    # Looks, Layouts, Lock
-    bg("flattoo-look gui")
-    wait_window("Looks")
-    shot("looks-gui", "Looks: pick a whole-desktop preset or save the current one.")
-    close_dialogs()
-    bg("flattoo-layout gui")
-    wait_window("Layouts")
-    shot("layouts-gui", "Layouts: open and arrange a set of windows in one click.")
-    close_dialogs()
-    bg("flattoo-lock")
-    wait_window("Lock setup")
-    shot("lock-dialog", "Lock This Setup: freezes the current desktop into the system. Unlock needs the administrator password.")
-    close_dialogs()
+        # Menu
+        artist("flattoo-look apply studio-dark")
+        wait_panel()
+        bg("xfce4-popup-whiskermenu")
+        wait_window("Whisker Menu")
+        shot("menu", "The menu (top-left button, or the Super key): every app by category, search box at the top.")
+        close_dialogs()
 
-    # Portfolio and Artist Profile
-    bg("flattoo-portfolio")
-    wait_window("Portfolio")
-    shot("portfolio-dialog", "Portfolio: what it will do before it does anything — originals untouched, location data stripped, nothing uploaded, only clients who agreed.")
-    close_dialogs()
-    bg("flattoo-profile")
-    wait_window("Artist Profile")
-    shot("profile-dialog", "Artist Profile: the basics, skills, certifications, the résumé, the exposure checklist.")
-    close_dialogs()
+        # Ask Flattoo: the tap sheet first, the text box behind "Type something else"
+        bg_logged("flattoo-copilot")
+        wait_window("rofi") or launch_log()
+        shot("ask-flattoo", "Ask Flattoo: the things people ask, as rows to tap. Typing filters them; the last row is a text box.")
+        close_dialogs()
+        bg("flattoo-copilot --typed")
+        wait_window("Ask Flattoo")
+        shot("ask-flattoo-typed", "Behind “Type something else…”: say what you need in plain words. The on-screen keyboard pops up for people who do not use the real one.")
+        close_dialogs()
+        bg("flattoo-copilot 'something like paint'")
+        wait_window("Ask Flattoo")
+        shot("ask-flattoo-paint", "Ask Flattoo answering 'something like paint': the drawing apps that fit this laptop, Open or Install.")
+        close_dialogs()
 
-    # Stencil tools
-    bg("stencil-print --gui /etc/flattoo/sample-stencil.png")
-    wait_window("Print stencil")
-    shot("print-stencil", "Print as Stencil with no stencil printer attached: it offers the other printers at true size instead. With the stencil printer on, it asks for width on skin, mirror, crisp lines or shading, copies.")
-    close_dialogs()
-    # The printer wizards need hardware to show anything; a short wait is enough
-    # to catch the "nothing found" dialog if it comes, and not much is lost if not.
-    bg("stencil-fix-printer")
-    wait_window("Stencil printer", timeout=120)
-    shot("fix-printer", "Fix Stencil Printer: it looks over USB, Wi-Fi and Bluetooth and says what it found — here, with no printer attached, what you see when it finds nothing.")
-    close_dialogs()
-    bg("stencil-bt-setup")
-    wait_window("Bluetooth stencil printer", timeout=90)
-    shot("bluetooth-printer", "Add Bluetooth Stencil Printer, from the menu or Ask Flattoo. With the printer on and blinking, it lists it; pick it and type the PIN if asked.")
-    close_dialogs()
-    bg("stencil-net-setup")
-    wait_window("Network stencil printer", timeout=90)
-    shot("network-printer", "Add Network Stencil Printer: it sweeps the shop Wi-Fi for printers and lists what it finds, or takes an address.")
-    close_dialogs()
+        # Looks, Layouts, Lock
+        bg("flattoo-look gui")
+        wait_window("Looks")
+        shot("looks-gui", "Looks: pick a whole-desktop preset or save the current one.")
+        close_dialogs()
+        bg("flattoo-layout gui")
+        wait_window("Layouts")
+        shot("layouts-gui", "Layouts: open and arrange a set of windows in one click.")
+        close_dialogs()
+        bg("flattoo-lock")
+        wait_window("Lock setup")
+        shot("lock-dialog", "Lock This Setup: freezes the current desktop into the system. Unlock needs the administrator password.")
+        close_dialogs()
 
-    # File manager with the right-click actions
-    studio.succeed("install -D -m644 /etc/flattoo/sample-stencil.png /home/artist/Pictures/rose-sketch.png; chown -R artist:users /home/artist/Pictures")
-    bg("thunar /home/artist/Pictures")
-    wait_window("Pictures")
-    # click into the icon view (not the location bar), select the file, open its menu
-    artist("xdotool search --name Pictures windowactivate --sync mousemove --window %1 420 420 click 1; sleep 1; xdotool key ctrl+a; sleep 2; xdotool key shift+F10", check=False)
-    studio.sleep(6)
-    shot("files-right-click", "Right-click an image in Files: Print as Stencil, Clean Lines, Open in Krita.")
-    artist("xdotool key Escape", check=False)
-    studio.execute("pkill -f thunar; true")
-    studio.sleep(3)
+        # Portfolio and Artist Profile
+        bg("flattoo-portfolio")
+        wait_window("Portfolio")
+        shot("portfolio-dialog", "Portfolio: what it will do before it does anything — originals untouched, location data stripped, nothing uploaded, only clients who agreed.")
+        close_dialogs()
+        bg("flattoo-profile")
+        wait_window("Artist Profile")
+        shot("profile-dialog", "Artist Profile: the basics, skills, certifications, the résumé, the exposure checklist.")
+        close_dialogs()
 
-    # Layouts with the real apps
-    bg("flattoo-layout apply reference-and-draw")
-    studio.wait_until_succeeds("su artist -c 'DISPLAY=:0 xdotool search --class krita'", timeout=900)
-    studio.sleep(150)
-    artist("flattoo-layout apply reference-and-draw", check=False)
-    studio.sleep(10)
-    shot("layout-reference-and-draw", "Reference + Draw: Krita on the left, the image viewer on the right for the reference.")
-    studio.execute("pkill -f krita; pkill -f ristretto; true")
-    # what the session complained about, for the next person reading this log
-    print("### session noise: " + studio.execute("journalctl -b --no-pager | grep -iE 'xfce4-panel|segfault|rofi|picom|onboard|flattoo-' | grep -vE 'g_hash_table|Successful su|session opened|session closed' | tail -60")[1])
-    studio.sleep(5)
-    bg("flattoo-layout apply paperwork")
-    studio.wait_until_succeeds("su artist -c 'DISPLAY=:0 xdotool search --class firefox'", timeout=900)
-    studio.sleep(120)
-    artist("flattoo-layout apply paperwork", check=False)
-    studio.sleep(10)
-    shot("layout-paperwork", "Paperwork: Firefox on the left, Files on the right.")
-    studio.execute("pkill -f firefox; pkill -f thunar; true")
-    studio.sleep(3)
+        # Stencil tools
+        bg("stencil-print --gui /etc/flattoo/sample-stencil.png")
+        wait_window("Print stencil")
+        shot("print-stencil", "Print as Stencil with no stencil printer attached: it offers the other printers at true size instead. With the stencil printer on, it asks for width on skin, mirror, crisp lines or shading, copies.")
+        close_dialogs()
+        # The printer wizards need hardware to show anything; a short wait is enough
+        # to catch the "nothing found" dialog if it comes, and not much is lost if not.
+        bg("stencil-fix-printer")
+        wait_window("Stencil printer", timeout=120)
+        shot("fix-printer", "Fix Stencil Printer: it looks over USB, Wi-Fi and Bluetooth and says what it found — here, with no printer attached, what you see when it finds nothing.")
+        close_dialogs()
+        bg("stencil-bt-setup")
+        wait_window("Bluetooth stencil printer", timeout=90)
+        shot("bluetooth-printer", "Add Bluetooth Stencil Printer, from the menu or Ask Flattoo. With the printer on and blinking, it lists it; pick it and type the PIN if asked.")
+        close_dialogs()
+        bg("stencil-net-setup")
+        wait_window("Network stencil printer", timeout=90)
+        shot("network-printer", "Add Network Stencil Printer: it sweeps the shop Wi-Fi for printers and lists what it finds, or takes an address.")
+        close_dialogs()
 
-    # Lock screen
-    artist("pgrep -u $(id -u) -f xfce4-screensaver >/dev/null || (xfce4-screensaver >/dev/null 2>&1 &); sleep 8; xfce4-screensaver-command --lock", check=False)
-    studio.sleep(15)
-    artist("xset dpms force on; xset s reset; xdotool key shift; sleep 1; xdotool mousemove 300 300 mousemove 400 400 key shift", check=False)
-    studio.sleep(6)
-    shot("lock-screen", "The lock screen after the lid closes or ten idle minutes: the password is the disk passphrase unless the installer was told otherwise.")
-    studio.send_chars("artist\n")
-    studio.sleep(3)
-    studio.shutdown()
+        # File manager with the right-click actions
+        studio.succeed("install -D -m644 /etc/flattoo/sample-stencil.png /home/artist/Pictures/rose-sketch.png; chown -R artist:users /home/artist/Pictures")
+        bg("thunar /home/artist/Pictures")
+        wait_window("Pictures")
+        # click into the icon view (not the location bar), select the file, open its menu
+        artist("xdotool search --name Pictures windowactivate --sync mousemove --window %1 420 420 click 1; sleep 1; xdotool key ctrl+a; sleep 2; xdotool key shift+F10", check=False)
+        studio.sleep(6)
+        shot("files-right-click", "Right-click an image in Files: Print as Stencil, Clean Lines, Open in Krita.")
+        artist("xdotool key Escape", check=False)
+        studio.execute("pkill -f thunar; true")
+        studio.sleep(3)
 
-    # i3 session
-    tiling.start()
-    tiling.wait_for_unit("graphical.target", timeout=2400)
-    try:
-        tiling.wait_until_succeeds("su artist -c 'DISPLAY=:0 xdotool search --class i3bar'", timeout=2400)
-    except Exception:
-        dump(tiling); raise
-    tiling.sleep(40)
-    shot("i3-desktop", "The i3 tiling session (pick it at the login screen): bar at the bottom, Super+D to launch, Super+Space for Ask Flattoo.", tiling)
-    bg("flattoo-apps", tiling)
-    wait_window("rofi", tiling)
-    shot("i3-rofi", "Super+D in the i3 session: the same app grid, type the first letters of an app.", tiling)
-    tiling.execute("pkill -f rofi; true")
+        # Layouts with the real apps
+        bg("flattoo-layout apply reference-and-draw")
+        studio.wait_until_succeeds("su artist -c 'DISPLAY=:0 xdotool search --class krita'", timeout=900)
+        studio.sleep(150)
+        artist("flattoo-layout apply reference-and-draw", check=False)
+        studio.sleep(10)
+        shot("layout-reference-and-draw", "Reference + Draw: Krita on the left, the image viewer on the right for the reference.")
+        studio.execute("pkill -f krita; pkill -f ristretto; true")
+        # what the session complained about, for the next person reading this log
+        print("### session noise: " + studio.execute("journalctl -b --no-pager | grep -iE 'xfce4-panel|segfault|rofi|picom|onboard|flattoo-' | grep -vE 'g_hash_table|Successful su|session opened|session closed' | tail -60")[1])
+        studio.sleep(5)
+        bg("flattoo-layout apply paperwork")
+        studio.wait_until_succeeds("su artist -c 'DISPLAY=:0 xdotool search --class firefox'", timeout=900)
+        studio.sleep(120)
+        artist("flattoo-layout apply paperwork", check=False)
+        studio.sleep(10)
+        shot("layout-paperwork", "Paperwork: Firefox on the left, Files on the right.")
+        studio.execute("pkill -f firefox; pkill -f thunar; true")
+        studio.sleep(3)
+
+        # Lock screen
+        artist("pgrep -u $(id -u) -f xfce4-screensaver >/dev/null || (xfce4-screensaver >/dev/null 2>&1 &); sleep 8; xfce4-screensaver-command --lock", check=False)
+        studio.sleep(15)
+        artist("xset dpms force on; xset s reset; xdotool key shift; sleep 1; xdotool mousemove 300 300 mousemove 400 400 key shift", check=False)
+        studio.sleep(6)
+        shot("lock-screen", "The lock screen after the lid closes or ten idle minutes: the password is the disk passphrase unless the installer was told otherwise.")
+        studio.send_chars("artist\n")
+        studio.sleep(3)
+        studio.shutdown()
+
+        # i3 session
+        tiling.start()
+        tiling.wait_for_unit("graphical.target", timeout=2400)
+        try:
+            tiling.wait_until_succeeds("su artist -c 'DISPLAY=:0 xdotool search --class i3bar'", timeout=2400)
+        except Exception:
+            dump(tiling); raise
+        tiling.sleep(40)
+        shot("i3-desktop", "The i3 tiling session (pick it at the login screen): bar at the bottom, Super+D to launch, Super+Space for Ask Flattoo.", tiling)
+        bg("flattoo-apps", tiling)
+        wait_window("rofi", tiling)
+        shot("i3-rofi", "Super+D in the i3 session: the same app grid, type the first letters of an app.", tiling)
+        tiling.execute("pkill -f rofi; true")
 
     with open(f"{os.environ['out']}/index.json", "w") as f:
         json.dump([{"file": k + ".png", "caption": v} for k, v in captions.items()], f, indent=2)
