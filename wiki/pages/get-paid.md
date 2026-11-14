@@ -22,7 +22,7 @@ Tell Flattoo *"get paid 150"*, *"take a 50 deposit from Maya"*, or tap **Get pai
 2. **Show the pay code.** The screen turns into a big code with the amount above it. Turn the laptop round. The client opens their phone camera, points it at the code, and their payment app opens with the amount and your name filled in. If you have more than one app set up, the tabs above the code switch between them.
 3. **Paid ✓.** When it lands on your phone, tap *Paid ✓ Venmo* (or whichever). That is what records it — the laptop never asks the payment app, it trusts you. *Paid cash ✓* and *Paid by card ✓* are there for everything else.
 
-A deposit taken this way marks the booking as held, and the *Deposit owed* card goes away.
+A deposit taken this way marks the booking as reserved, and the *Deposit owed* card goes away.
 
 ## Which apps
 

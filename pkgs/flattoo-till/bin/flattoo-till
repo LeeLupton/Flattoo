@@ -398,7 +398,7 @@ def build_feed(ref=None, s=None):
     for b in upcoming:
         if b["deposit"] and not b["deposit_paid"]:
             cards.append({"id": "deposit:" + b["id"], "kind": "deposit", "kicker": "Deposit owed", "title": b["client"],
-                          "big": money(b["deposit"], cur), "sub": f"{b['what']} · {booking_dt(b).strftime('%a %b %-d, %-I:%M %p')} · no deposit yet, the slot is not held",
+                          "big": money(b["deposit"], cur), "sub": f"{b['what']} · {booking_dt(b).strftime('%a %b %-d, %-I:%M %p')} · no deposit yet, the slot is not reserved",
                           "primary": {"label": "Show the pay code", "do": "pay", "amount": b["deposit"], "kind": "deposit", "client": b["client"], "booking": b["id"]},
                           "actions": [{"label": "Cancel booking", "do": "cancel", "booking": b["id"]}]})
     t = totals(lg, ref)
@@ -1206,7 +1206,7 @@ class App:
         self.qr_title.set_text("Leave a review" if which == "review" else "Book your next session")
         self.set_qr(link)
         self.qr_handle.set_text(re.sub(r"^https?://", "", link)[:48])
-        self.qr_sub.set_text("Thank you — it means a lot to a small studio." if which == "review" else "Pick a day that suits you; a deposit holds the slot.")
+        self.qr_sub.set_text("Thank you — it means a lot to a small studio." if which == "review" else "Pick a day that suits you; a deposit reserves the slot.")
         self.qr_buttons.pack_start(self.button("Done", lambda: self.show_page("feed"), primary=True), False, False, 0)
         self.qr_buttons.show_all()
         self.show_page("qr")

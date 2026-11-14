@@ -22,7 +22,7 @@ Open **Money** (the green card on the dock, or tell Flattoo *"who's next"*, *"to
 
 - **Next up** — the next client today: their name, the piece, the time, what they have paid and what is owed. The big button is whatever the money needs next: *Get deposit*, *Get paid $300*, or just *Get paid*. Under it: *Consent form*, *Print stencil*, *Done ✓*.
 - **Later today** — the rest of today, one card each.
-- **Deposit owed** — a booking in the coming days with no deposit yet. The slot is not held until it lands; *Show the pay code* is the whole fix.
+- **Deposit owed** — a booking in the coming days with no deposit yet. The slot is not reserved until it lands; *Show the pay code* is the whole fix.
 - **Today** — what came in today, with this week, this month and this year under it.
 - **Coming up** — the next three bookings.
 - **Due to rebook** — a client you finished a month or more ago with nothing booked. Healed by now; one tap books the next session.
