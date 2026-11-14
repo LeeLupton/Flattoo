@@ -327,9 +327,12 @@ stdenv.mkDerivation (finalAttrs: {
         '';
 
     # Every preset's panel profile must load into a real xfce4-panel: xfconfd
-    # + panel under Xvfb, xfce4-panel-profiles load, then the panels and
-    # plugin ids the preset declares must exist and no "plugin could not be
-    # loaded" dialog may be up. (A bare [0.9, ...] array once crashed xfconfd.)
+    # + panel under Xvfb, flattoo-look panel-load, then the panels and
+    # plugin ids the preset declares must exist, every launcher must have
+    # exactly its own item (in xfconf and on disk), and no "plugin could not
+    # be loaded" dialog may be up. (A bare [0.9, ...] array once crashed
+    # xfconfd; loading over a running panel once left gears and the last
+    # look's apps in the dock.)
     panelLoad =
       runCommand "flattoo-looks-panel-load"
         {
@@ -365,7 +368,7 @@ stdenv.mkDerivation (finalAttrs: {
             for l in ${finalAttrs.finalPackage}/share/flattoo/looks/*.json; do
               n=$(basename $l .json)
               flattoo-look panel-tar $n $n.tar.bz2 >/dev/null
-              xfce4-panel-profiles load $n.tar.bz2
+              flattoo-look panel-load $n   # the way a look switch does it: panel stopped, old launchers gone
               sleep 6
               python3 - $l <<'PY'
           import json, subprocess, sys
@@ -387,12 +390,36 @@ stdenv.mkDerivation (finalAttrs: {
                 xfce4-panel --disable-wm-check >>$TMPDIR/panel.log 2>&1 &
               fi
               sleep 8
+              # every launcher must end up with exactly its own item file: a launcher
+              # whose file is missing shows a gear, one with a stray file shows the last look's app
+              python3 - $n.tar.bz2 $n <<'PY'
+          import os, re, subprocess, sys, tarfile
+          t = tarfile.open(sys.argv[1])
+          want = {}
+          for name in t.getnames():
+              m = re.fullmatch(r"launcher-(\d+)/(.+\.desktop)", name)
+              if m:
+                  want.setdefault(m.group(1), set()).add(m.group(2))
+          d = os.path.join(os.environ["XDG_CONFIG_HOME"], "xfce4", "panel")
+          bad = []
+          have_dirs = {x.split("-", 1)[1] for x in os.listdir(d) if x.startswith("launcher-")} if os.path.isdir(d) else set()
+          for i in sorted(set(want) | have_dirs, key=int):
+              files = set(os.listdir(os.path.join(d, "launcher-" + i))) if i in have_dirs else set()
+              items = set(re.findall(r"^(\S+\.desktop)$", subprocess.run(["xfconf-query", "-c", "xfce4-panel", "-p", f"/plugins/plugin-{i}/items"], capture_output=True, text=True).stdout, re.M))
+              if files != want.get(i, set()) or items != want.get(i, set()):
+                  bad.append(f"launcher-{i}: want {sorted(want.get(i, set()))} files {sorted(files)} items {sorted(items)}")
+          print(sys.argv[2], "launchers:", len(want), "ok" if not bad else "MISMATCH")
+          for b in bad:
+              print("   ", b)
+          open(os.path.join(os.environ["TMPDIR"], "launcher-mismatch"), "a").write("".join(sys.argv[2] + ": " + b + "\n" for b in bad))
+          PY
               if xdotool search --name "could not be loaded" >/dev/null 2>&1; then
                 echo "$n: a plugin failed to load"; exit 1
               fi
             done
             pkill -f xfce4-panel || true
           SH
+          if [ -s $TMPDIR/launcher-mismatch ]; then echo "launchers out of step with their look:"; cat $TMPDIR/launcher-mismatch; exit 1; fi
           touch $out
         '';
 

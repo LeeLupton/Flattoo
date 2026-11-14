@@ -643,6 +643,11 @@ APP_CSS = """
 window, .till-root {{ background-color: {bg}; color: {fg}; }}
 label {{ color: {fg}; }}
 .kicker {{ color: {accent}; font-size: 15px; font-weight: 700; letter-spacing: 2px; }}
+.strip {{ color: {muted}; font-size: 17px; font-weight: 600; }}
+.feedcard {{ background-color: {card}; border-radius: 28px; border: 1px solid {border}; padding: 54px 64px; }}
+.feedcard .title {{ font-size: 54px; }}
+.feedcard .kicker {{ font-size: 16px; }}
+.feedcard .sub {{ font-size: 21px; }}
 .title {{ font-size: 40px; font-weight: 700; }}
 .big {{ font-size: 76px; font-weight: 800; }}
 .big-small {{ font-size: 30px; font-weight: 600; color: {muted}; }}
@@ -752,6 +757,12 @@ class App:
             GLib.timeout_add(int(quit_after * 1000), Gtk.main_quit)
 
     # ---- plumbing
+    def keyboard_room(self, box):
+        """Space under a form, so its last button can be scrolled clear of the on-screen keyboard."""
+        pad = self.Gtk.Box()
+        pad.set_size_request(-1, 300)
+        box.pack_end(pad, False, False, 0)
+
     def scrolled(self, w):
         sw = self.Gtk.ScrolledWindow()
         sw.set_policy(self.Gtk.PolicyType.NEVER, self.Gtk.PolicyType.AUTOMATIC)
@@ -790,6 +801,7 @@ class App:
             b.handler_block_by_func(self.on_tab)
             b.set_active(n == tab)
             b.handler_unblock_by_func(self.on_tab)
+        self.tabs[tab].grab_focus()  # not a text box: the on-screen keyboard waits until one is tapped
 
     def on_tab(self, button, name):
         if button.get_active():
@@ -844,8 +856,15 @@ class App:
         Gtk = self.Gtk
         box = Gtk.EventBox()
         box.add_events(self.Gdk.EventMask.SCROLL_MASK | self.Gdk.EventMask.SMOOTH_SCROLL_MASK | self.Gdk.EventMask.TOUCH_MASK)
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.add(col)
+        strip = Gtk.Box(margin_start=36, margin_end=36, margin_top=22)
+        self.strip_day = Gtk.Label(xalign=0); self.strip_day.get_style_context().add_class("strip")
+        self.strip_take = Gtk.Label(xalign=1); self.strip_take.get_style_context().add_class("strip")
+        strip.pack_start(self.strip_day, True, True, 0); strip.pack_end(self.strip_take, False, False, 0)
+        col.pack_start(strip, False, False, 0)
         over = Gtk.Overlay()
-        box.add(over)
+        col.pack_start(over, True, True, 0)
         self.feed_stack = Gtk.Stack()
         self.feed_stack.set_transition_type(Gtk.StackTransitionType.SLIDE_UP_DOWN)
         self.feed_stack.set_transition_duration(320)
@@ -908,6 +927,10 @@ class App:
         self.cards = build_feed(s=self.s)
         for i, c in enumerate(self.cards):
             self.feed_stack.add_named(self.scrolled(self.card_widget(c)), str(i))
+        t = totals()
+        n_today = sum(1 for c in self.cards if c["kind"] == "booking" and c["kicker"].startswith(("Next up", "Later today")))
+        self.strip_day.set_text(now().strftime("%A, %B %-d"))
+        self.strip_take.set_text(f"{n_today} client{'s' if n_today != 1 else ''} today  ·  {money(t['today'], self.cur)} in")
         self.feed_i = next((i for i, c in enumerate(self.cards) if c["id"] == keep), 0)
         self.feed_stack.show_all()
         self.feed_stack.set_visible_child_name(str(self.feed_i))
@@ -915,8 +938,10 @@ class App:
 
     def card_widget(self, c):
         Gtk = self.Gtk
-        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER, spacing=10)
-        outer.set_margin_start(60); outer.set_margin_end(80); outer.set_margin_top(30); outer.set_margin_bottom(30)
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER, spacing=12)
+        outer.get_style_context().add_class("feedcard")
+        outer.set_size_request(780, -1)
+        outer.set_margin_start(60); outer.set_margin_end(80); outer.set_margin_top(24); outer.set_margin_bottom(44)
         k = Gtk.Label(label=c["kicker"].upper(), xalign=0.5); k.get_style_context().add_class("kicker")
         outer.pack_start(k, False, False, 0)
         t = Gtk.Label(label=c["title"], xalign=0.5, wrap=True, justify=Gtk.Justification.CENTER); t.get_style_context().add_class("title")
@@ -1214,7 +1239,10 @@ class App:
     # ---- book
     def make_book(self):
         Gtk = self.Gtk
-        box = Gtk.Box(spacing=36, margin=40, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box = Gtk.Box(spacing=36, margin=40, halign=Gtk.Align.CENTER, valign=Gtk.Align.START)
+        page.pack_start(box, False, False, 0)
+        self.keyboard_room(page)
         left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         for text in ("WHO",):
             l = Gtk.Label(label=text, xalign=0); l.get_style_context().add_class("kicker"); left.pack_start(l, False, False, 0)
@@ -1277,7 +1305,7 @@ class App:
         right.pack_start(grid, False, False, 0)
         right.pack_start(self.button("Book it", self.do_book, primary=True), False, False, 12)
         box.pack_start(right, False, False, 0)
-        return box
+        return page
 
     def book_when(self):
         y, m, d = self.book_cal.get_date()
@@ -1435,7 +1463,8 @@ class App:
     # ---- settings
     def make_settings(self):
         Gtk = self.Gtk
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=40, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=40, halign=Gtk.Align.CENTER, valign=Gtk.Align.START)
+        self.keyboard_room(box)
         l = Gtk.Label(label="HOW YOU GET PAID", xalign=0); l.get_style_context().add_class("kicker"); box.pack_start(l, False, False, 0)
         s = Gtk.Label(label="Type each handle once. The pay code puts the amount in for the client.", xalign=0, wrap=True); s.get_style_context().add_class("sub"); box.pack_start(s, False, False, 0)
         self.set_entries = {}
@@ -1488,7 +1517,8 @@ class ConsentFlow:
         self.note = Gtk.Label(); self.note.get_style_context().add_class("toast"); self.note.set_no_show_all(True)
         root.pack_start(self.note, False, False, 0)
         # 1 who
-        who = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=40, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        who = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=40, halign=Gtk.Align.CENTER, valign=Gtk.Align.START)
+        app.keyboard_room(who)
         k = Gtk.Label(label="CONSENT · 1 OF 3", xalign=0); k.get_style_context().add_class("kicker"); who.pack_start(k, False, False, 0)
         t = Gtk.Label(label="Who is getting tattooed?", xalign=0); t.get_style_context().add_class("title"); who.pack_start(t, False, False, 0)
         self.e = {}

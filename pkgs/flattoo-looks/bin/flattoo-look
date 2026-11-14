@@ -217,7 +217,9 @@ def panel_profile_tar(panel, out_path):
             props[f"/plugins/plugin-{i}"] = f"'{ptype}'"
             for k, (t, v) in pprops.items():
                 if t == "as":
-                    props[f"/plugins/plugin-{i}/{k}"] = "[" + ", ".join(f"'{x}'" for x in v) + "]"
+                    # an array of variants, like every xfconf array: a bare ['x'] is stored as a
+                    # string vector the launcher cannot read, and the launcher shows a gear
+                    props[f"/plugins/plugin-{i}/{k}"] = "[" + ", ".join(f"<'{x}'>" for x in v) + "]"
                     for d in v:
                         desktops[f"launcher-{i}/{d}"] = find_desktop_file(d)
                 elif t == "bool":
@@ -798,17 +800,59 @@ def set_wallpaper(path):
     run(["xfdesktop", "--reload"])  # a reload that lands mid-change is not repainted; the second one is
 
 
+def panel_running():
+    """The panel owns org.xfce.Panel on the session bus while it runs."""
+    r = run(["gdbus", "call", "--session", "--dest", "org.freedesktop.DBus", "--object-path", "/org/freedesktop/DBus",
+             "--method", "org.freedesktop.DBus.NameHasOwner", "org.xfce.Panel"])
+    return "true" in r.stdout
+
+
+def stop_panel():
+    if not panel_running():
+        return
+    run(["xfce4-panel", "--quit"])
+    for _ in range(40):
+        if not panel_running():
+            return
+        time.sleep(0.25)
+    run(["pkill", "-u", str(os.getuid()), "-f", r"(^|/)\.?xfce4-panel(-wrapped)?( |$)"])
+    time.sleep(1)
+
+
 def apply_panel(panel):
+    """Load the look's panels with the panel stopped.
+
+    xfce4-panel-profiles resets and rewrites the panel's settings while the
+    old panel is still running. The outgoing launchers answer that by
+    emptying or re-saving their item lists, and their directories stay
+    behind: after a switch a launcher shows a gear (its item list was
+    wiped) or the previous look's app (a stray file). So: quit the panel,
+    drop the old launcher directories, let the loader write settings and
+    files with nothing listening, start the panel on the result."""
     with tempfile.NamedTemporaryFile(suffix=".tar.bz2", delete=False) as tf:
         path = tf.name
     panel_profile_tar(panel, path)
-    if shutil.which("xfce4-panel-profiles"):
-        r = run(["xfce4-panel-profiles", "load", path])
-        if r.returncode != 0:
-            print("panel profile load failed:", r.stderr.strip()[-300:], file=sys.stderr)
-    else:
+    if not shutil.which("xfce4-panel-profiles"):
         print("xfce4-panel-profiles not installed; panel unchanged", file=sys.stderr)
+        os.unlink(path)
+        return
+    stop_panel()
+    if os.path.isdir(PANEL_DIR):
+        for d in os.listdir(PANEL_DIR):
+            if d.startswith("launcher-"):
+                shutil.rmtree(os.path.join(PANEL_DIR, d), ignore_errors=True)
+    r = run(["xfce4-panel-profiles", "load", path])
+    if r.returncode != 0:
+        print("panel profile load failed:", r.stderr.strip()[-300:], file=sys.stderr)
     os.unlink(path)
+    try:
+        subprocess.Popen(["xfce4-panel", "--disable-wm-check"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError as ex:
+        print("could not start the panel:", ex, file=sys.stderr)
+    for _ in range(40):  # up before the next step of the look touches it
+        if panel_running():
+            break
+        time.sleep(0.25)
 
 
 # ------------------------------------------------------------------ capture
@@ -1026,6 +1070,7 @@ def main(argv=None):
     e = sub.add_parser("export"); e.add_argument("dir")
     r = sub.add_parser("restore-files"); r.add_argument("dir")
     t = sub.add_parser("panel-tar"); t.add_argument("name"); t.add_argument("out")
+    t = sub.add_parser("panel-load"); t.add_argument("name")  # just the panels of a look (what apply does for them)
     pc = sub.add_parser("picom-conf", help="print the picom config a look generates"); pc.add_argument("name"); pc.add_argument("--xrender", action="store_true")
     bd = sub.add_parser("backdrop", help="write the lock-screen picture for a look (what apply does)"); bd.add_argument("name")
     fx = sub.add_parser("effects"); fx.add_argument("state", choices=["on", "off", "status"])
@@ -1115,6 +1160,9 @@ def main(argv=None):
     if args.cmd == "panel-tar":
         pr = load_preset(args.name)
         panel_profile_tar(pr.get("panels") or pr.get("panel", {}), args.out); print(args.out); return 0
+    if args.cmd == "panel-load":
+        pr = load_preset(args.name)
+        apply_panel(pr.get("panels") or pr.get("panel", {})); return 0
     return 2
 
 
