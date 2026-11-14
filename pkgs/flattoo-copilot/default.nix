@@ -32,6 +32,7 @@
   flattoo-looks,
   stencil-tools,
   flattoo-assist,
+  flattoo-till, # Money: get paid, book, consent, aftercare
   rofi, # the tap sheet
 }:
 let
@@ -55,6 +56,7 @@ let
     flattoo-looks
     stencil-tools
     flattoo-assist
+    flattoo-till
   ];
   adminPath = lib.makeBinPath [
     py

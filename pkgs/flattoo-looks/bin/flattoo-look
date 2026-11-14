@@ -84,6 +84,7 @@ LAUNCHERS = {
     "client": "flattoo-showcase.desktop",  # hand the laptop to a client: portfolio, then lock
     "powersheet": "flattoo-power.desktop",  # the big Lock / Sleep / Restart / Shut down sheet
     "keyboard": "flattoo-keyboard.desktop",  # show/hide the on-screen keyboard (modules/touch.nix)
+    "money": "flattoo-till.desktop",  # Money: the feed, get paid, book, papers (modules/till.nix)
 }
 
 
@@ -459,6 +460,8 @@ def apply_palette(pal, icon_theme=None):
     os.makedirs(FLATTOO_CFG, exist_ok=True)
     with open(os.path.join(FLATTOO_CFG, "rofi-colors.rasi"), "w") as f:
         f.write(ROFI_CSS.format(**c))
+    with open(os.path.join(FLATTOO_CFG, "palette.json"), "w") as f:  # Money and other Flattoo apps follow the look
+        json.dump(c, f, indent=1)
 
 
 def write_notify_theme(css):
@@ -867,7 +870,7 @@ def export_bundle(dest):
         shutil.copytree(PANEL_DIR, os.path.join(dest, "panel"), dirs_exist_ok=True)
         copied.append("panel/")
     for rel in ("flattoo/layouts", "flattoo/looks", "flattoo/picom.conf", "flattoo/picom-xrender.conf", "flattoo/compositor",
-                "flattoo/rofi-colors.rasi", "flattoo/schedule.json", "flattoo/display.json", "flattoo/current-look",
+                "flattoo/rofi-colors.rasi", "flattoo/palette.json", "flattoo/schedule.json", "flattoo/display.json", "flattoo/current-look",
                 "Thunar/uca.xml", "mimeapps.list", "kritarc", "xfce4/helpers.rc", "xfce4/terminal/terminalrc"):
         src = os.path.join(CFG, rel)
         if os.path.isdir(src):

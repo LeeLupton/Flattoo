@@ -27,6 +27,7 @@ from PIL import Image
 REQUIRED = ("id", "title", "summary", "category", "tags", "questions")
 CATEGORIES = {
     "desktop": "The desktop",
+    "business": "Clients and money",
     "drawing": "Drawing",
     "printing": "Stencils and printers",
     "phone": "Phone and files",

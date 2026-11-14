@@ -16,7 +16,7 @@ shortcuts: ["Super+Space"]
 screenshots: [ask-flattoo, ask-flattoo-typed, ask-flattoo-paint]
 related: [no-keyboard, install-apps, updates, fix-printer, looks]
 ---
-Tap the speech bubble next to the menu (or press **Super+Space**). A sheet opens with the things people ask most — **Fix the stencil printer, Print a stencil, Show a client my work, Dark mode, Change the look, Add an app, Update now, Free up space, Wi-Fi, Bluetooth, Battery, Portfolio, My profile, Shop display, Night look, Help, Lock/sleep/turn off** — one tap each. Nothing to type.
+Tap the speech bubble next to the menu (or press **Super+Space**). A sheet opens with the things people ask most — **Fix the stencil printer, Print a stencil, Get paid, Book a client, Who's next, Consent form, Show a client my work, Dark mode, Change the look, Add an app, Update now, Free up space, Wi-Fi, Bluetooth, Battery, Portfolio, My profile, Shop display, Night look, Help, Lock/sleep/turn off** — one tap each. Nothing to type.
 
 The last row, **Type something else…**, opens a text box for anything not on the sheet; the on-screen keyboard appears with it. With voice switched on there is also **Say it**: tap, speak, and it repeats what it heard before doing anything. Speech is understood on the laptop itself; nothing is sent anywhere.
 
@@ -36,6 +36,10 @@ Typed or spoken, say it the way you would say it:
 | *show a client my work* | Your portfolio fills the screen; Done locks the laptop. |
 | *effects off* | Rounded corners, shadows and animations off (the laptop feels quicker). |
 | *turn off* | The power sheet. |
+| *get paid 150*, *take a 50 deposit from Maya* | The pay code with the amount filled in; *Paid ✓* records it. [Get paid](get-paid.html). |
+| *book Maya tomorrow at 2 for a dragon* | The booking form, filled in; check it and tap Book it. |
+| *who's next*, *how much did I make this week* | The Money feed, or the number. [Money](money.html). |
+| *consent form for Jon*, *print aftercare*, *leave a review* | The papers and the codes. |
 | *make a portfolio* | Builds a gallery folder from your finished-work photos — nothing uploaded. [What it offers](assist.html). |
 | *my resume*, *add fine line to my skills* | Your artist profile, rendered to a résumé and bio. |
 | *how do I get more clients* | The exposure checklist. |

@@ -24,6 +24,7 @@
     "launchers": [
       "menu",
       "copilot",
+      "money",
       "files",
       "firefox",
       "krita",

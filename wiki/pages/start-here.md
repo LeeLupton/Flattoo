@@ -13,7 +13,7 @@ questions:
 actions: [help]
 menu: []
 screenshots: [look-home, apps-grid, menu]
-related: [ask-flattoo, no-keyboard, looks, show-client, draw, print-stencil]
+related: [ask-flattoo, money, no-keyboard, looks, show-client, draw, print-stencil]
 ---
 ## Turning it on
 
@@ -37,6 +37,10 @@ Right-click any picture in Files and you get **Print as Stencil**, **Clean Lines
 ## If you do not like how it looks
 
 Open **Looks** from the menu, or tell Flattoo "dark mode", "the neon look", "sakura". Fifteen complete looks; pick one and it changes instantly, and it can go dark by itself in the evening. [Looks](looks.html).
+
+## Getting paid
+
+**Money** (the green card on the dock, or *"get paid 150"* to Flattoo) is who is next, what they owe, and a code the client scans to pay. Booking, the consent form and the aftercare sheet are in there too. [Money](money.html).
 
 ## A client wants to see your work
 

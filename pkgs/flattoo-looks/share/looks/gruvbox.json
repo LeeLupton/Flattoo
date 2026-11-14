@@ -26,6 +26,7 @@
     "launchers": [
       "menu",
       "copilot",
+      "money",
       "krita",
       "mypaint",
       "inkscape",

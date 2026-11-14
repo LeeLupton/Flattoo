@@ -1,0 +1,1750 @@
+#!/usr/bin/env python3
+"""Money: the part of the laptop that gets the artist paid.
+
+One screen, one thumb. The feed is a stack of cards — the next client, a
+deposit that is still owed, today's take, a client who is due to rebook —
+and every card has one big button. Swipe up for the next card, like a
+phone. The tabs at the bottom are the four things that make money happen:
+
+  Feed       what is next and what is owed
+  Get paid   a number pad, then a QR code the client scans (Venmo, Cash App,
+             PayPal, Square, Zelle), then one tap records it
+  Book       client, what, when, price, deposit — six taps
+  Papers     the consent form (signed with a finger, saved as PDF, kept two
+             years) and the aftercare sheet to print or show
+  Money      today / week / month / year, every payment, export for taxes
+
+Nothing leaves the laptop. The QR code is a link into the artist's own
+payment app on the client's phone; the laptop never talks to Venmo or
+anyone else. A payment is recorded because the artist tapped "Paid", not
+because an API said so. Bookings, payments and clients live in
+~/.local/share/flattoo/till/ (JSON); what the artist keeps — consent forms,
+the ledger for the accountant — is written to ~/Documents/Business/.
+
+  flattoo-till [gui]                       the app (menu entry "Money")
+  flattoo-till pay AMOUNT [--client N] [--kind deposit|balance|tip|flash|other] [--note T]
+  flattoo-till paid AMOUNT --method M [--client N] [--kind K] [--note T]
+  flattoo-till book --client N --what W --when "tomorrow 2pm" [--price P] [--deposit D]
+  flattoo-till book-gui [--client N] [--what W] [--when T]
+  flattoo-till bookings [today|week|all]      done ID | cancel ID | deposit-paid ID
+  flattoo-till consent [--client N]           the signing flow
+  flattoo-till consent-pdf --client N --dob YYYY-MM-DD --phone P --address A \
+               --design D --placement PL --signature strokes.json [--photos] OUT.pdf
+  flattoo-till aftercare show|print|pdf [OUT]
+  flattoo-till review | booklink              the QR card for the client
+  flattoo-till money [today|week|month|year]  totals;  export [YEAR]  the CSV
+  flattoo-till feed --json                    the cards, as the feed would show them
+  flattoo-till paylink METHOD AMOUNT [NOTE]   the link a QR encodes
+  flattoo-till brief                          one notification: today's clients, deposits owed
+  flattoo-till settings | set KEY VALUE | get KEY
+"""
+
+import argparse
+import csv
+import datetime as dt
+import io
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import urllib.parse
+import uuid
+
+HOME = os.path.expanduser("~")
+DATA_DIR = os.environ.get("FLATTOO_TILL_DATA") or os.path.join(
+    os.environ.get("XDG_DATA_HOME", os.path.join(HOME, ".local", "share")), "flattoo", "till")
+CFG_DIR = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".config")), "flattoo")
+USER_SETTINGS = os.path.join(CFG_DIR, "till.json")
+SYSTEM_SETTINGS = os.environ.get("FLATTOO_TILL_SYSTEM_SETTINGS", "/etc/flattoo/till.json")
+PROFILE = os.path.join(CFG_DIR, "profile.json")
+PALETTE = os.path.join(CFG_DIR, "palette.json")
+BUSINESS = os.environ.get("FLATTOO_TILL_DOCS") or os.path.join(HOME, "Documents", "Business")
+SHARE = "@share@"  # …/share/flattoo/till (aftercare text)
+
+METHODS = ("venmo", "cashapp", "paypal", "square", "zelle")
+METHOD_TITLES = {"venmo": "Venmo", "cashapp": "Cash App", "paypal": "PayPal", "square": "Square", "zelle": "Zelle", "cash": "Cash", "card": "Card"}
+KINDS = ("deposit", "balance", "tip", "flash", "other")
+KIND_TITLES = {"deposit": "Deposit", "balance": "Balance", "tip": "Tip", "flash": "Flash", "other": "Other"}
+DEFAULTS = {
+    "currency": "$",
+    "pay": {m: "" for m in METHODS},
+    "review_link": "",
+    "booking_link": "",
+    "default_deposit": 50,
+    "rebook_after_days": 28,
+    "printer": "",
+    "hours": ["10:00", "19:30"],
+}
+WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+
+# ------------------------------------------------------------------ small helpers
+
+def run(cmd, **kw):
+    try:
+        return subprocess.run(cmd, text=True, capture_output=True, **kw)
+    except OSError as e:
+        return subprocess.CompletedProcess(cmd, 127, "", str(e))
+
+
+def spawn(cmd):
+    try:
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        return True
+    except OSError:
+        return False
+
+
+def now():
+    t = os.environ.get("FLATTOO_TILL_NOW")  # tests pin the clock
+    return dt.datetime.fromisoformat(t) if t else dt.datetime.now()
+
+
+def money(amount, cur=None):
+    cur = cur if cur is not None else settings()["currency"]
+    a = float(amount)
+    s = f"{a:,.0f}" if a == int(a) else f"{a:,.2f}"
+    return f"{cur}{s}"
+
+
+def load_json(path, default):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def save_json(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=1, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
+def safe_name(s):
+    return re.sub(r"[^A-Za-z0-9 _.-]+", "", s).strip()[:60] or "client"
+
+
+# ------------------------------------------------------------------ settings and profile
+
+def settings():
+    s = json.loads(json.dumps(DEFAULTS))
+    for path in (SYSTEM_SETTINGS, USER_SETTINGS):
+        d = load_json(path, {})
+        for k, v in d.items():
+            if k == "pay" and isinstance(v, dict):
+                s["pay"].update({m: str(v.get(m, s["pay"].get(m, ""))) for m in METHODS})
+            elif k in s:
+                s[k] = v
+    return s
+
+
+def set_setting(key, value):
+    d = load_json(USER_SETTINGS, {})
+    if key in METHODS:
+        d.setdefault("pay", {})[key] = value
+    elif key in ("default_deposit", "rebook_after_days"):
+        d[key] = int(value)
+    elif key in DEFAULTS:
+        d[key] = value
+    else:
+        raise SystemExit(f"unknown setting {key}; one of: {', '.join(list(METHODS) + [k for k in DEFAULTS if k != 'pay'])}")
+    save_json(USER_SETTINGS, d)
+
+
+def profile():
+    p = load_json(PROFILE, {})
+    return {"name": p.get("name", ""), "studio": p.get("studio", ""), "city": p.get("city", ""),
+            "links": p.get("links", {}) or {}}
+
+
+def configured_methods(s=None):
+    s = s or settings()
+    return [m for m in METHODS if s["pay"].get(m)]
+
+
+def pay_link(method, amount, note="", s=None):
+    """The URL a payment QR encodes. Venmo, Cash App and PayPal take the amount
+    in the link; Square is a fixed checkout link; Zelle has no link — the QR
+    carries the phone number or e-mail as text for the client to copy."""
+    s = s or settings()
+    handle = s["pay"].get(method, "").strip()
+    if not handle:
+        return None
+    amt = f"{float(amount):.2f}".rstrip("0").rstrip(".") if amount else ""
+    if method == "venmo":
+        user = handle.lstrip("@")
+        q = {"txn": "pay"}
+        if amt:
+            q["amount"] = amt
+        if note:
+            q["note"] = note[:60]
+        return f"https://venmo.com/{urllib.parse.quote(user)}?{urllib.parse.urlencode(q)}"
+    if method == "cashapp":
+        tag = handle.lstrip("$")
+        return f"https://cash.app/${urllib.parse.quote(tag)}" + (f"/{amt}" if amt else "")
+    if method == "paypal":
+        user = handle.split("paypal.me/")[-1].strip("/")
+        return f"https://paypal.me/{urllib.parse.quote(user)}" + (f"/{amt}USD" if amt else "")
+    if method == "square":
+        return handle if handle.startswith("http") else "https://" + handle
+    if method == "zelle":
+        return handle
+    return None
+
+
+# ------------------------------------------------------------------ the store
+
+def _path(name):
+    return os.path.join(DATA_DIR, name + ".json")
+
+
+def bookings():
+    return load_json(_path("bookings"), [])
+
+
+def ledger():
+    return load_json(_path("ledger"), [])
+
+
+def clients():
+    return load_json(_path("clients"), {})
+
+
+def touch_client(name, **fields):
+    if not name:
+        return
+    cs = clients()
+    c = cs.setdefault(name, {"visits": 0, "consents": []})
+    for k, v in fields.items():
+        if v:
+            c[k] = v
+    save_json(_path("clients"), cs)
+
+
+def parse_when(text, ref=None):
+    """'2026-11-15 14:00', 'tomorrow 2pm', 'friday at 11:30', 'today 3' -> datetime."""
+    ref = ref or now()
+    t = text.strip().lower().replace(" at ", " ")
+    try:
+        return dt.datetime.fromisoformat(t.replace("t", "T") if "t" in t and "-" in t else t)
+    except ValueError:
+        pass
+    day = ref.date()
+    if "tomorrow" in t:
+        day = day + dt.timedelta(days=1)
+    elif "today" in t:
+        pass
+    else:
+        for i, w in enumerate(WEEKDAYS):
+            if w in t or w[:3] in t.split():
+                ahead = (i - day.weekday()) % 7
+                day = day + dt.timedelta(days=ahead or 7)
+                break
+        m = re.search(r"\b(\d{4})-(\d{2})-(\d{2})\b", t)
+        if m:
+            day = dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    m = re.search(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b", re.sub(r"\d{4}-\d{2}-\d{2}", "", t))
+    if not m:
+        raise ValueError(f"no time in {text!r}")
+    h, mi, ap = int(m.group(1)), int(m.group(2) or 0), m.group(3)
+    if ap == "pm" and h < 12:
+        h += 12
+    if ap == "am" and h == 12:
+        h = 0
+    if not ap and 1 <= h <= 7:  # "today 3" in a tattoo shop is 3 pm
+        h += 12
+    if not (0 <= h < 24 and 0 <= mi < 60):
+        raise ValueError(f"bad time in {text!r}")
+    return dt.datetime.combine(day, dt.time(h, mi))
+
+
+def add_booking(client, what, when, price=0, deposit=0, notes=""):
+    b = {"id": uuid.uuid4().hex[:8], "client": client.strip(), "what": what.strip(), "when": when.strftime("%Y-%m-%d %H:%M"),
+         "price": float(price or 0), "deposit": float(deposit or 0), "deposit_paid": False, "status": "booked",
+         "notes": notes, "created": now().strftime("%Y-%m-%d %H:%M")}
+    bs = bookings()
+    bs.append(b)
+    save_json(_path("bookings"), bs)
+    touch_client(b["client"])
+    return b
+
+
+def update_booking(bid, **fields):
+    bs = bookings()
+    for b in bs:
+        if b["id"] == bid or b["id"].startswith(bid):
+            b.update(fields)
+            save_json(_path("bookings"), bs)
+            return b
+    return None
+
+
+def booking_dt(b):
+    return dt.datetime.strptime(b["when"], "%Y-%m-%d %H:%M")
+
+
+def paid_so_far(b, lg=None):
+    lg = lg if lg is not None else ledger()
+    return sum(e["amount"] for e in lg if e.get("booking") == b["id"] and e.get("kind") != "tip")
+
+
+def record_payment(amount, method, client="", kind="other", note="", booking=None, when=None):
+    e = {"id": uuid.uuid4().hex[:8], "when": (when or now()).strftime("%Y-%m-%d %H:%M"), "amount": round(float(amount), 2),
+         "method": method, "client": client.strip(), "kind": kind if kind in KINDS else "other", "note": note.strip(), "booking": booking}
+    lg = ledger()
+    lg.append(e)
+    save_json(_path("ledger"), lg)
+    if booking and kind == "deposit":
+        update_booking(booking, deposit_paid=True)
+    if client:
+        touch_client(client)
+    export_csv(int(e["when"][:4]), lg)  # the accountant's file is always current
+    return e
+
+
+def totals(lg=None, ref=None):
+    lg = lg if lg is not None else ledger()
+    ref = ref or now()
+    today = ref.date()
+    week_start = today - dt.timedelta(days=today.weekday())
+    out = {"today": 0.0, "week": 0.0, "month": 0.0, "year": 0.0, "count_today": 0}
+    for e in lg:
+        d = dt.datetime.strptime(e["when"], "%Y-%m-%d %H:%M").date()
+        if d.year == today.year:
+            out["year"] += e["amount"]
+            if d.month == today.month:
+                out["month"] += e["amount"]
+        if week_start <= d <= today:
+            out["week"] += e["amount"]
+        if d == today:
+            out["today"] += e["amount"]
+            out["count_today"] += 1
+    return out
+
+
+def export_csv(year=None, lg=None):
+    lg = lg if lg is not None else ledger()
+    year = year or now().year
+    os.makedirs(os.path.join(BUSINESS, "Money"), exist_ok=True)
+    path = os.path.join(BUSINESS, "Money", f"ledger-{year}.csv")
+    rows = [e for e in lg if e["when"].startswith(str(year))]
+    with open(path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["date", "time", "amount", "method", "kind", "client", "note"])
+        for e in sorted(rows, key=lambda e: e["when"]):
+            d, t = e["when"].split(" ")
+            w.writerow([d, t, f"{e['amount']:.2f}", METHOD_TITLES.get(e["method"], e["method"]), KIND_TITLES.get(e["kind"], e["kind"]), e["client"], e["note"]])
+        w.writerow([])
+        w.writerow(["total", "", f"{sum(e['amount'] for e in rows):.2f}", "", "", "", f"{len(rows)} payments"])
+    return path
+
+
+# ------------------------------------------------------------------ the feed
+
+def build_feed(ref=None, s=None):
+    """The cards, top to bottom. Pure data: the GUI draws them, `feed --json`
+    prints them, the morning brief reads the first ones."""
+    ref = ref or now()
+    s = s or settings()
+    cur = s["currency"]
+    bs = bookings()
+    lg = ledger()
+    cards = []
+    today = ref.date()
+    live = [b for b in bs if b["status"] == "booked"]
+    todays = sorted([b for b in live if booking_dt(b).date() == today], key=booking_dt)
+    upcoming = sorted([b for b in live if booking_dt(b).date() > today], key=booking_dt)
+    methods = configured_methods(s)
+
+    def booking_card(b, kicker):
+        paid = paid_so_far(b, lg)
+        owed = max(b["price"] - paid, 0)
+        bits = [booking_dt(b).strftime("%-I:%M %p") if booking_dt(b).date() == today else booking_dt(b).strftime("%a %b %-d, %-I:%M %p")]
+        if b["price"]:
+            bits.append(f"{money(b['price'], cur)}" + (f" · {money(paid, cur)} paid" if paid else ""))
+        if b["deposit"] and not b["deposit_paid"]:
+            bits.append(f"deposit {money(b['deposit'], cur)} owed")
+        acts = [{"label": "Consent form", "do": "consent", "client": b["client"], "what": b["what"]},
+                {"label": "Print stencil", "do": "stencil"}]
+        if b["deposit"] and not b["deposit_paid"]:
+            primary = {"label": f"Get deposit {money(b['deposit'], cur)}", "do": "pay", "amount": b["deposit"], "kind": "deposit", "client": b["client"], "booking": b["id"]}
+        elif owed > 0:
+            primary = {"label": f"Get paid {money(owed, cur)}", "do": "pay", "amount": owed, "kind": "balance", "client": b["client"], "booking": b["id"]}
+        else:
+            primary = {"label": "Get paid", "do": "pay", "kind": "balance", "client": b["client"], "booking": b["id"]}
+        acts.append({"label": "Done ✓", "do": "done", "booking": b["id"]})
+        return {"id": "booking:" + b["id"], "kind": "booking", "kicker": kicker, "title": b["client"], "big": b["what"],
+                "sub": " · ".join(bits), "primary": primary, "actions": acts}
+
+    if todays:
+        for i, b in enumerate(todays):
+            cards.append(booking_card(b, "Next up" if i == 0 else f"Later today · {len(todays) - i} more"))
+    else:
+        cards.append({"id": "empty-today", "kind": "empty", "kicker": "Today", "title": "Nothing booked today",
+                      "big": "", "sub": "A walk-in? Book them in six taps, then take the deposit.",
+                      "primary": {"label": "Book a client", "do": "book"}, "actions": [{"label": "Get paid", "do": "pay"}]})
+    for b in upcoming:
+        if b["deposit"] and not b["deposit_paid"]:
+            cards.append({"id": "deposit:" + b["id"], "kind": "deposit", "kicker": "Deposit owed", "title": b["client"],
+                          "big": money(b["deposit"], cur), "sub": f"{b['what']} · {booking_dt(b).strftime('%a %b %-d, %-I:%M %p')} · no deposit yet, the slot is not held",
+                          "primary": {"label": "Show the pay code", "do": "pay", "amount": b["deposit"], "kind": "deposit", "client": b["client"], "booking": b["id"]},
+                          "actions": [{"label": "Cancel booking", "do": "cancel", "booking": b["id"]}]})
+    t = totals(lg, ref)
+    cards.append({"id": "money", "kind": "money", "kicker": "Today", "title": f"{t['count_today']} payment{'s' if t['count_today'] != 1 else ''}",
+                  "big": money(t["today"], cur), "sub": f"this week {money(t['week'], cur)} · this month {money(t['month'], cur)} · this year {money(t['year'], cur)}",
+                  "primary": {"label": "Get paid", "do": "pay"}, "actions": [{"label": "Every payment", "do": "money"}, {"label": "Export for taxes", "do": "export"}]})
+    for b in upcoming[:3]:
+        cards.append(booking_card(b, "Coming up"))
+    # rebook: finished clients with nothing booked, a month on
+    done = [b for b in bs if b["status"] == "done"]
+    booked_clients = {b["client"] for b in live}
+    last_by_client = {}
+    for b in sorted(done, key=booking_dt):
+        last_by_client[b["client"]] = b
+    for name, b in sorted(last_by_client.items(), key=lambda kv: booking_dt(kv[1])):
+        days = (today - booking_dt(b).date()).days
+        if name not in booked_clients and days >= int(s.get("rebook_after_days", 28)):
+            cards.append({"id": "rebook:" + b["id"], "kind": "rebook", "kicker": "Due to rebook", "title": name,
+                          "big": f"{days} days", "sub": f"since {b['what']} · nothing booked next. Healed by now — the next session or a touch-up.",
+                          "primary": {"label": f"Book {name.split()[0]}", "do": "book", "client": name},
+                          "actions": [{"label": "Not now", "do": "dismiss", "booking": b["id"]}]})
+            if len([c for c in cards if c["kind"] == "rebook"]) >= 3:
+                break
+    if s.get("review_link"):
+        cards.append({"id": "review", "kind": "qr", "kicker": "After the session", "title": "Leave a review", "big": "",
+                      "sub": "Turn the laptop round: the client scans and the review is a tap away while the chair is still warm.",
+                      "primary": {"label": "Show the review code", "do": "qr", "which": "review"}, "actions": []})
+    if s.get("booking_link") or profile()["links"].get("booking"):
+        cards.append({"id": "booklink", "kind": "qr", "kicker": "Before they leave", "title": "Book the next one", "big": "",
+                      "sub": "The booking page as a code the client keeps on their phone.",
+                      "primary": {"label": "Show the booking code", "do": "qr", "which": "booking"}, "actions": []})
+    cards.append({"id": "aftercare", "kind": "paper", "kicker": "Papers", "title": "Aftercare sheet", "big": "",
+                  "sub": "Print one for every client who walks out, or show it on the screen.",
+                  "primary": {"label": "Print aftercare", "do": "aftercare", "how": "print"}, "actions": [{"label": "Show on screen", "do": "aftercare", "how": "show"}]})
+    if not methods:
+        cards.insert(1 if todays else 0, {"id": "setup-pay", "kind": "setup", "kicker": "One-time setup", "title": "How do you get paid?",
+                     "big": "", "sub": "Add your Venmo, Cash App, PayPal, Square or Zelle once; from then on clients scan a code with the amount filled in.",
+                     "primary": {"label": "Set up payments", "do": "settings"}, "actions": []})
+    return cards
+
+
+def brief_text(ref=None):
+    ref = ref or now()
+    cards = build_feed(ref)
+    todays = [c for c in cards if c["kind"] == "booking" and c["kicker"].startswith(("Next up", "Later today"))]
+    owed = [c for c in cards if c["kind"] == "deposit"]
+    lines = []
+    if todays:
+        lines.append(f"{len(todays)} client{'s' if len(todays) != 1 else ''} today: " + ", ".join(f"{c['title']} {c['sub'].split(' · ')[0]}" for c in todays))
+    else:
+        lines.append("Nothing booked today.")
+    if owed:
+        lines.append(f"{len(owed)} deposit{'s' if len(owed) != 1 else ''} owed: " + ", ".join(f"{c['title']} {c['big']}" for c in owed))
+    rebook = [c for c in cards if c["kind"] == "rebook"]
+    if rebook:
+        lines.append("Due to rebook: " + ", ".join(c["title"] for c in rebook))
+    return "\n".join(lines)
+
+
+# ------------------------------------------------------------------ QR codes
+
+def qr_png(text, box=12):
+    import qrcode
+    q = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=box, border=2)
+    q.add_data(text)
+    q.make(fit=True)
+    img = q.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.get_image().save(buf, format="PNG") if hasattr(img, "get_image") else img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+# ------------------------------------------------------------------ PDFs: consent and aftercare
+
+def aftercare_text():
+    try:
+        with open(os.path.join(SHARE, "aftercare.txt")) as f:
+            return f.read()
+    except OSError:
+        return AFTERCARE_FALLBACK
+
+
+AFTERCARE_FALLBACK = """Aftercare
+Keep the wrap on for the time your artist told you, then wash gently with lukewarm water and unscented soap. Pat dry. Thin layer of the ointment you were given, two or three times a day, for the first days; then an unscented lotion.
+No soaking (baths, pools, the ocean) and no sun on it for two to three weeks. Don't pick or scratch; it will flake and itch, that is normal.
+Clean hands before you touch it. Loose clothes over it. If it gets hot, swollen, oozes or you run a fever, call us and see a doctor.
+"""
+
+
+def _pdf_text(cr, pango, x, y, w, text, size=11, bold=False, color=(0, 0, 0)):
+    from gi.repository import PangoCairo
+    layout = PangoCairo.create_layout(cr)
+    fd = pango.FontDescription(f"{'Sans Bold' if bold else 'Sans'} {size}")
+    layout.set_font_description(fd)
+    layout.set_width(int(w * pango.SCALE))
+    layout.set_wrap(pango.WrapMode.WORD_CHAR)
+    layout.set_text(text, -1)
+    cr.set_source_rgb(*color)
+    cr.move_to(x, y)
+    PangoCairo.show_layout(cr, layout)
+    _, lh = layout.get_pixel_size()
+    return y + lh
+
+
+def _pdf_begin(out):
+    import cairo
+    import gi
+    gi.require_version("Pango", "1.0")
+    gi.require_version("PangoCairo", "1.0")
+    from gi.repository import Pango
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    surf = cairo.PDFSurface(out, 612, 792)  # US Letter, points
+    return surf, cairo.Context(surf), Pango
+
+
+CONSENT_STATEMENTS = [
+    ("adult", "I am 18 or older and have shown valid photo ID."),
+    ("sober", "I am not under the influence of alcohol or drugs."),
+    ("health", "I have told the artist about any medical condition, allergy, medication, pregnancy, or skin condition that could matter. The skin at the site is healthy — no rash, sunburn, infection or open wound."),
+    ("permanent", "I understand a tattoo is permanent, that removal is costly and may not be complete, and that the final result can vary with my skin and healing."),
+    ("design", "I have reviewed the design, its size, spelling and placement, and I approve it as drawn."),
+    ("aftercare", "I have received aftercare instructions and will follow them; healing is my responsibility once I leave."),
+    ("risk", "I accept the risks that come with tattooing — infection, allergic reaction, scarring — when the studio's sterile procedures are followed, and I release the artist and studio from claims arising from my own failure to follow aftercare or to disclose a condition."),
+]
+PHOTO_STATEMENT = "The artist may photograph the finished tattoo and use the photo (no face, no name) in their portfolio and social media."
+
+
+def consent_pdf(out, client, dob, phone, address, design, placement, strokes, photos=False, artist=None, studio=None, when=None, email=""):
+    """One page: who, what, the statements, the finger signature as vector
+    strokes, the artist's line. `strokes` is [[(x, y), ...], ...] in 0..1."""
+    surf, cr, Pango = _pdf_begin(out)
+    when = when or now()
+    p = profile()
+    artist = artist or p["name"] or "Artist"
+    studio = studio or p["studio"] or "Studio"
+    m, w = 54, 612 - 108
+    y = 54
+    cr.set_source_rgb(0, 0, 0)
+    y = _pdf_text(cr, Pango, m, y, w, studio, 18, bold=True)
+    y = _pdf_text(cr, Pango, m, y + 2, w, f"Tattoo consent and client record · {when.strftime('%B %-d, %Y')}", 10, color=(0.35, 0.35, 0.35))
+    y += 10
+    cr.set_line_width(0.8)
+    cr.move_to(m, y); cr.line_to(612 - m, y); cr.stroke()
+    y += 12
+    try:
+        age = (when.date() - dt.date.fromisoformat(dob)).days // 365
+        age_s = f"{dob} (age {age})"
+    except ValueError:
+        age_s = dob
+    rows = [("Client", client), ("Date of birth", age_s), ("Phone", phone), ("Address", address)]
+    if email:
+        rows.append(("E-mail", email))
+    rows += [("Tattoo", design), ("Placement", placement), ("Artist", artist)]
+    for k, v in rows:
+        _pdf_text(cr, Pango, m, y, 120, k, 10, bold=True, color=(0.3, 0.3, 0.3))
+        y = _pdf_text(cr, Pango, m + 124, y, w - 124, v or "—", 11) + 4
+    y += 8
+    for key, text in CONSENT_STATEMENTS:
+        cr.rectangle(m, y + 2, 9, 9); cr.set_source_rgb(0, 0, 0); cr.set_line_width(0.8); cr.stroke()
+        cr.move_to(m + 1.5, y + 7); cr.line_to(m + 4, y + 9.5); cr.line_to(m + 8, y + 3); cr.set_line_width(1.4); cr.stroke()
+        y = _pdf_text(cr, Pango, m + 16, y, w - 16, text, 9.5) + 5
+    cr.rectangle(m, y + 2, 9, 9); cr.set_line_width(0.8); cr.stroke()
+    if photos:
+        cr.move_to(m + 1.5, y + 7); cr.line_to(m + 4, y + 9.5); cr.line_to(m + 8, y + 3); cr.set_line_width(1.4); cr.stroke()
+    y = _pdf_text(cr, Pango, m + 16, y, w - 16, PHOTO_STATEMENT + ("" if photos else "  (not granted)"), 9.5) + 14
+    # signature box
+    bw, bh = 300, 110
+    bx, by = m, y + 12
+    cr.set_source_rgb(0.75, 0.75, 0.75); cr.set_line_width(0.6)
+    cr.rectangle(bx, by, bw, bh); cr.stroke()
+    cr.set_source_rgb(0.05, 0.05, 0.25); cr.set_line_width(1.6)
+    cr.set_line_cap(1); cr.set_line_join(1)  # round
+    for stroke in strokes or []:
+        pts = [(bx + 6 + float(px) * (bw - 12), by + 6 + float(py) * (bh - 12)) for px, py in stroke]
+        if len(pts) == 1:
+            cr.arc(pts[0][0], pts[0][1], 0.9, 0, 6.3); cr.fill()
+            continue
+        cr.move_to(*pts[0])
+        for pt in pts[1:]:
+            cr.line_to(*pt)
+        cr.stroke()
+    _pdf_text(cr, Pango, bx, by + bh + 4, bw, f"Client signature · {when.strftime('%Y-%m-%d %H:%M')}", 8.5, color=(0.35, 0.35, 0.35))
+    ax = bx + bw + 24
+    cr.set_source_rgb(0.75, 0.75, 0.75); cr.set_line_width(0.6)
+    cr.move_to(ax, by + bh - 20); cr.line_to(612 - m, by + bh - 20); cr.stroke()
+    _pdf_text(cr, Pango, ax, by + bh - 16, 612 - m - ax, f"Artist · {artist}", 8.5, color=(0.35, 0.35, 0.35))
+    _pdf_text(cr, Pango, m, 792 - 54, w, "Studio record. Kept on file for at least two years and available to the health department on request.", 8, color=(0.45, 0.45, 0.45))
+    cr.show_page()
+    surf.finish()
+    return out
+
+
+def save_consent(client, dob, phone, address, design, placement, strokes, photos=False, email=""):
+    d = os.path.join(BUSINESS, "Consent")
+    os.makedirs(d, exist_ok=True)
+    stamp = now().strftime("%Y-%m-%d %H%M")
+    out = os.path.join(d, f"{stamp} {safe_name(client)}.pdf")
+    consent_pdf(out, client, dob, phone, address, design, placement, strokes, photos=photos, email=email)
+    cs = clients()
+    c = cs.setdefault(client, {"visits": 0, "consents": []})
+    c.update({"phone": phone, "dob": dob, "address": address, "visits": c.get("visits", 0) + 1, "last_seen": stamp[:10], "photos_ok": bool(photos)})
+    c.setdefault("consents", []).append(out)
+    save_json(_path("clients"), cs)
+    return out
+
+
+def aftercare_pdf(out):
+    surf, cr, Pango = _pdf_begin(out)
+    p = profile()
+    m, w = 54, 612 - 108
+    y = 60
+    y = _pdf_text(cr, Pango, m, y, w, p["studio"] or "Aftercare", 24, bold=True)
+    sub = " · ".join(x for x in (p["name"], p["city"], p["links"].get("instagram", ""), p["links"].get("website", "")) if x)
+    if sub:
+        y = _pdf_text(cr, Pango, m, y + 2, w, sub, 11, color=(0.35, 0.35, 0.35))
+    y += 14
+    cr.set_source_rgb(0, 0, 0); cr.set_line_width(1); cr.move_to(m, y); cr.line_to(612 - m, y); cr.stroke()
+    y += 18
+    for para in aftercare_text().strip().split("\n"):
+        if not para.strip():
+            y += 8
+            continue
+        head = para.strip() == para.strip().split(" ")[0] and len(para.strip()) < 30
+        y = _pdf_text(cr, Pango, m, y, w, para.strip(), 15 if head else 12.5, bold=head) + (6 if head else 10)
+    cr.show_page()
+    surf.finish()
+    return out
+
+
+def print_file(path, printer=None):
+    printer = printer or settings().get("printer") or ""
+    if not shutil.which("lp"):
+        return False, "No printing on this system (lp is missing)."
+    cmd = ["lp"] + (["-d", printer] if printer else []) + [path]
+    r = run(cmd)
+    return r.returncode == 0, (r.stdout + r.stderr).strip()
+
+
+# ------------------------------------------------------------------ the GUI
+
+APP_CSS = """
+window, .till-root {{ background-color: {bg}; color: {fg}; }}
+label {{ color: {fg}; }}
+.kicker {{ color: {accent}; font-size: 15px; font-weight: 700; letter-spacing: 2px; }}
+.title {{ font-size: 40px; font-weight: 700; }}
+.big {{ font-size: 76px; font-weight: 800; }}
+.big-small {{ font-size: 30px; font-weight: 600; color: {muted}; }}
+.sub {{ color: {muted}; font-size: 19px; }}
+.muted {{ color: {muted}; }}
+.card {{ background-color: {card}; border-radius: {radius}px; border: 1px solid {border}; padding: 22px; }}
+button {{ border-radius: 999px; font-size: 19px; font-weight: 600; padding: 14px 26px; min-height: 30px;
+          background-image: none; background-color: {card}; color: {fg}; border: 1px solid {border}; box-shadow: none; text-shadow: none; }}
+button:hover {{ background-color: {border}; }}
+button.primary {{ background-color: {accent}; color: {on_accent}; border-color: {accent}; font-size: 24px; padding: 20px 40px; }}
+button.primary:hover {{ opacity: 0.9; }}
+button.primary label {{ color: {on_accent}; }}
+button.key {{ font-size: 30px; font-weight: 600; padding: 10px; border-radius: 20px; min-width: 88px; min-height: 52px; }}
+button.chip {{ font-size: 17px; padding: 10px 18px; }}
+button.chip:checked, button.key:checked {{ background-color: {accent}; color: {on_accent}; border-color: {accent}; }}
+button.chip:checked label, button.key:checked label {{ color: {on_accent}; }}
+button.tab {{ border-radius: 18px; border: none; background-color: transparent; font-size: 16px; padding: 10px 18px; color: {muted}; }}
+button.tab label {{ color: {muted}; }}
+button.tab:checked {{ background-color: {card}; }}
+button.tab:checked label {{ color: {accent}; font-weight: 700; }}
+.tabbar {{ background-color: {card}; border-top: 1px solid {border}; padding: 6px 12px; }}
+.amount {{ font-size: 72px; font-weight: 800; }}
+entry {{ font-size: 22px; padding: 14px 18px; border-radius: 16px; background-color: {card}; color: {fg}; border: 1px solid {border}; min-height: 30px; caret-color: {fg}; }}
+entry:focus {{ border-color: {accent}; }}
+.toast {{ background-color: {fg}; color: {bg}; border-radius: 999px; padding: 14px 26px; font-size: 18px; margin: 18px; }}
+.toast label {{ color: {bg}; }}
+.dot {{ color: {border}; font-size: 14px; }}
+.dot-on {{ color: {accent}; font-size: 14px; }}
+.sigpad {{ background-color: #ffffff; border-radius: 18px; border: 2px dashed {border}; }}
+calendar {{ font-size: 17px; background-color: {card}; color: {fg}; border-radius: 16px; padding: 8px; }}
+calendar:selected {{ background-color: {accent}; color: {on_accent}; }}
+.row {{ padding: 10px 6px; border-bottom: 1px solid {border}; }}
+.tile {{ background-color: {card}; border-radius: 18px; border: 1px solid {border}; padding: 18px 24px; }}
+.tile-big {{ font-size: 36px; font-weight: 800; }}
+checkbutton {{ padding: 8px 0; }}
+checkbutton label {{ font-size: 18px; }}
+checkbutton check {{ min-width: 28px; min-height: 28px; border-radius: 8px; }}
+"""
+
+PALETTE_FALLBACK = {"bg": "#17181c", "fg": "#f2f2f5", "muted": "#9a9aa6", "accent": "#5b8cff", "on_accent": "#ffffff",
+                    "border": "#30323a", "card": "#20222a", "radius": 20}
+
+
+def palette():
+    p = dict(PALETTE_FALLBACK)
+    d = load_json(PALETTE, {})
+    for k in p:
+        if k in d:
+            p[k] = d[k]
+    return p
+
+
+class App:
+    def __init__(self, page="feed", prefill=None, shot=None, quit_after=None, fullscreen=False):
+        import gi
+        gi.require_version("Gtk", "3.0")
+        gi.require_version("Gdk", "3.0")
+        gi.require_version("GdkPixbuf", "2.0")
+        from gi.repository import Gdk, GdkPixbuf, GLib, Gtk, Pango
+        self.Gtk, self.Gdk, self.GLib, self.GdkPixbuf, self.Pango = Gtk, Gdk, GLib, GdkPixbuf, Pango
+        self.s = settings()
+        self.cur = self.s["currency"]
+        self.shot, self.quit_after = shot, quit_after
+        css = Gtk.CssProvider()
+        css.load_from_data(APP_CSS.format(**palette()).encode())
+        Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+        self.win = Gtk.Window(title="Money")
+        self.win.set_default_size(1180, 760)
+        self.win.set_icon_name("flattoo-till")
+        if fullscreen:
+            self.win.fullscreen()
+        else:
+            self.win.maximize()
+        self.win.connect("destroy", Gtk.main_quit)
+        self.win.connect("key-press-event", self.on_key)
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        root.get_style_context().add_class("till-root")
+        self.win.add(root)
+        self.overlay = Gtk.Overlay()
+        root.pack_start(self.overlay, True, True, 0)
+        self.pages = Gtk.Stack()
+        self.pages.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self.pages.set_transition_duration(180)
+        self.overlay.add(self.pages)
+        self.toast = Gtk.Revealer(valign=Gtk.Align.END, halign=Gtk.Align.CENTER)
+        self.toast.set_transition_type(Gtk.RevealerTransitionType.SLIDE_UP)
+        self.toast_label = Gtk.Label()
+        self.toast_label.get_style_context().add_class("toast")
+        self.toast.add(self.toast_label)
+        self.overlay.add_overlay(self.toast)
+        self.overlay.set_overlay_pass_through(self.toast, True)
+
+        self.pages.add_named(self.make_feed(), "feed")
+        for name, make in (("pay", self.make_pay), ("qr", self.make_qr_page), ("book", self.make_book), ("papers", self.make_papers),
+                           ("money", self.make_money), ("settings", self.make_settings)):
+            self.pages.add_named(self.scrolled(make()), name)  # a page is never taller than the screen
+        root.pack_start(self.make_tabs(), False, False, 0)
+        self.win.show_all()
+        self.toast.set_reveal_child(False)
+        self.show_page(page)
+        if prefill:
+            self.apply_prefill(page, prefill)
+        if shot:
+            GLib.timeout_add(1800, self.take_shot)
+        if quit_after:
+            GLib.timeout_add(int(quit_after * 1000), Gtk.main_quit)
+
+    # ---- plumbing
+    def scrolled(self, w):
+        sw = self.Gtk.ScrolledWindow()
+        sw.set_policy(self.Gtk.PolicyType.NEVER, self.Gtk.PolicyType.AUTOMATIC)
+        sw.set_kinetic_scrolling(True)
+        sw.add(w)
+        return sw
+
+    def say(self, text):
+        self.toast_label.set_text(text)
+        self.toast.set_reveal_child(True)
+        self.GLib.timeout_add(2600, lambda: self.toast.set_reveal_child(False) or False)
+
+    def take_shot(self):
+        gw = getattr(self, "shot_target", self.win).get_window()
+        if gw:
+            w, h = gw.get_width(), gw.get_height()
+            pb = self.Gdk.pixbuf_get_from_window(gw, 0, 0, w, h)
+            if pb:
+                pb.savev(self.shot, "png", [], [])
+        if not self.quit_after:
+            self.Gtk.main_quit()
+        return False
+
+    def show_page(self, name):
+        if name not in ("feed", "pay", "book", "papers", "money", "qr", "settings"):
+            name = "feed"
+        if name == "feed":
+            self.refresh_feed()
+        if name == "money":
+            self.refresh_money()
+        if name == "papers":
+            self.refresh_papers()
+        self.pages.set_visible_child_name(name)
+        tab = {"qr": "pay", "settings": "money"}.get(name, name)
+        for n, b in self.tabs.items():
+            b.handler_block_by_func(self.on_tab)
+            b.set_active(n == tab)
+            b.handler_unblock_by_func(self.on_tab)
+
+    def on_tab(self, button, name):
+        if button.get_active():
+            self.show_page(name)
+
+    def make_tabs(self):
+        Gtk = self.Gtk
+        bar = Gtk.Box(spacing=6, homogeneous=True)
+        bar.get_style_context().add_class("tabbar")
+        self.tabs = {}
+        for name, label, icon in (("feed", "Feed", "view-list-symbolic"), ("pay", "Get paid", "emblem-ok-symbolic"), ("book", "Book", "x-office-calendar-symbolic"),
+                                  ("papers", "Papers", "x-office-document-symbolic"), ("money", "Money", "accessories-calculator-symbolic")):
+            b = Gtk.ToggleButton()
+            b.get_style_context().add_class("tab")
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            img = Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.LARGE_TOOLBAR)
+            box.pack_start(img, False, False, 0)
+            box.pack_start(Gtk.Label(label=label), False, False, 0)
+            b.add(box)
+            b.connect("toggled", self.on_tab, name)
+            bar.pack_start(b, True, True, 0)
+            self.tabs[name] = b
+        return bar
+
+    def on_key(self, _w, ev):
+        Gdk = self.Gdk
+        k = ev.keyval
+        if k == Gdk.KEY_Escape:
+            if self.pages.get_visible_child_name() in ("feed",):
+                self.Gtk.main_quit()
+            else:
+                self.show_page("feed")
+            return True
+        if self.pages.get_visible_child_name() == "feed":
+            if k in (Gdk.KEY_Down, Gdk.KEY_Page_Down, Gdk.KEY_space, Gdk.KEY_j):
+                self.feed_go(1); return True
+            if k in (Gdk.KEY_Up, Gdk.KEY_Page_Up, Gdk.KEY_k):
+                self.feed_go(-1); return True
+        return False
+
+    def button(self, label, cb, primary=False, cls=None):
+        b = self.Gtk.Button(label=label)
+        if primary:
+            b.get_style_context().add_class("primary")
+        if cls:
+            b.get_style_context().add_class(cls)
+        b.connect("clicked", lambda *_: cb())
+        return b
+
+    # ---- the feed
+    def make_feed(self):
+        Gtk = self.Gtk
+        box = Gtk.EventBox()
+        box.add_events(self.Gdk.EventMask.SCROLL_MASK | self.Gdk.EventMask.SMOOTH_SCROLL_MASK | self.Gdk.EventMask.TOUCH_MASK)
+        over = Gtk.Overlay()
+        box.add(over)
+        self.feed_stack = Gtk.Stack()
+        self.feed_stack.set_transition_type(Gtk.StackTransitionType.SLIDE_UP_DOWN)
+        self.feed_stack.set_transition_duration(320)
+        self.feed_stack.set_homogeneous(True)
+        over.add(self.feed_stack)
+        self.dots = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, valign=Gtk.Align.CENTER, halign=Gtk.Align.END, margin_end=22)
+        over.add_overlay(self.dots)
+        over.set_overlay_pass_through(self.dots, True)
+        hint = Gtk.Button(label="⌄")
+        hint.get_style_context().add_class("tab")
+        hint.set_valign(Gtk.Align.END); hint.set_halign(Gtk.Align.CENTER); hint.set_margin_bottom(6)
+        hint.connect("clicked", lambda *_: self.feed_go(1))
+        over.add_overlay(hint)
+        swipe = Gtk.GestureSwipe.new(box)
+        swipe.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        swipe.set_touch_only(False)
+        swipe.connect("swipe", self.on_swipe)
+        self._swipe = swipe
+        box.connect("scroll-event", self.on_scroll)
+        self._scroll_at = 0.0
+        self.cards = []
+        self.feed_i = 0
+        return box
+
+    def on_swipe(self, _g, vx, vy):
+        if abs(vy) > 250 and abs(vy) > abs(vx):
+            self.feed_go(1 if vy < 0 else -1)
+
+    def on_scroll(self, _w, ev):
+        import time
+        ok, dx, dy = ev.get_scroll_deltas()
+        d = dy if ok else (1 if ev.direction == self.Gdk.ScrollDirection.DOWN else -1 if ev.direction == self.Gdk.ScrollDirection.UP else 0)
+        t = time.monotonic()
+        if d and t - self._scroll_at > 0.45:
+            self._scroll_at = t
+            self.feed_go(1 if d > 0 else -1)
+        return True
+
+    def feed_go(self, step):
+        if not self.cards:
+            return
+        self.feed_i = max(0, min(len(self.cards) - 1, self.feed_i + step))
+        self.feed_stack.set_visible_child_name(str(self.feed_i))
+        self.update_dots()
+
+    def update_dots(self):
+        for ch in self.dots.get_children():
+            self.dots.remove(ch)
+        for i in range(len(self.cards)):
+            l = self.Gtk.Label(label="●")
+            l.get_style_context().add_class("dot-on" if i == self.feed_i else "dot")
+            self.dots.pack_start(l, False, False, 0)
+        self.dots.show_all()
+
+    def refresh_feed(self):
+        Gtk = self.Gtk
+        keep = self.cards[self.feed_i]["id"] if self.cards else None
+        for ch in self.feed_stack.get_children():
+            self.feed_stack.remove(ch)
+        self.cards = build_feed(s=self.s)
+        for i, c in enumerate(self.cards):
+            self.feed_stack.add_named(self.scrolled(self.card_widget(c)), str(i))
+        self.feed_i = next((i for i, c in enumerate(self.cards) if c["id"] == keep), 0)
+        self.feed_stack.show_all()
+        self.feed_stack.set_visible_child_name(str(self.feed_i))
+        self.update_dots()
+
+    def card_widget(self, c):
+        Gtk = self.Gtk
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER, spacing=10)
+        outer.set_margin_start(60); outer.set_margin_end(80); outer.set_margin_top(30); outer.set_margin_bottom(30)
+        k = Gtk.Label(label=c["kicker"].upper(), xalign=0.5); k.get_style_context().add_class("kicker")
+        outer.pack_start(k, False, False, 0)
+        t = Gtk.Label(label=c["title"], xalign=0.5, wrap=True, justify=Gtk.Justification.CENTER); t.get_style_context().add_class("title")
+        outer.pack_start(t, False, False, 0)
+        if c["big"]:
+            b = Gtk.Label(label=c["big"], xalign=0.5, wrap=True, justify=Gtk.Justification.CENTER)
+            b.get_style_context().add_class("big" if (c["kind"] in ("money", "deposit", "rebook")) else "big-small")
+            outer.pack_start(b, False, False, 0)
+        if c["sub"]:
+            s = Gtk.Label(label=c["sub"], xalign=0.5, wrap=True, justify=Gtk.Justification.CENTER); s.get_style_context().add_class("sub")
+            s.set_max_width_chars(60)
+            outer.pack_start(s, False, False, 6)
+        p = c.get("primary")
+        if p:
+            pb = self.button(p["label"], lambda a=p: self.act(a), primary=True)
+            pb.set_halign(Gtk.Align.CENTER); pb.set_margin_top(18)
+            outer.pack_start(pb, False, False, 0)
+        if c.get("actions"):
+            row = Gtk.Box(spacing=10, halign=Gtk.Align.CENTER)
+            for a in c["actions"]:
+                row.pack_start(self.button(a["label"], lambda a=a: self.act(a)), False, False, 0)
+            outer.pack_start(row, False, False, 6)
+        return outer
+
+    def act(self, a):
+        do = a["do"]
+        if do == "pay":
+            self.pay_prefill(a.get("amount"), a.get("kind"), a.get("client"), a.get("booking"))
+            self.show_page("pay")
+            if a.get("amount"):
+                self.show_qr_for_amount()
+        elif do == "book":
+            self.show_page("book")
+            if a.get("client"):
+                self.book_client.set_text(a["client"])
+        elif do == "consent":
+            self.show_page("papers")
+            self.start_consent(a.get("client", ""), a.get("what", ""))
+        elif do == "stencil":
+            spawn(["stencil-print", "--gui"]) or self.say("Print Stencil is not installed here.")
+        elif do == "done":
+            update_booking(a["booking"], status="done")
+            self.say("Marked done. Nice work.")
+            self.refresh_feed()
+        elif do == "cancel":
+            update_booking(a["booking"], status="cancelled")
+            self.say("Booking cancelled.")
+            self.refresh_feed()
+        elif do == "dismiss":
+            update_booking(a["booking"], status="done-dismissed")
+            self.refresh_feed()
+        elif do == "money":
+            self.show_page("money")
+        elif do == "export":
+            self.say("Saved " + export_csv().replace(HOME, "~"))
+        elif do == "qr":
+            self.show_static_qr(a["which"])
+        elif do == "aftercare":
+            self.aftercare(a.get("how", "show"))
+        elif do == "settings":
+            self.show_page("settings")
+
+    # ---- get paid
+    def make_pay(self):
+        Gtk = self.Gtk
+        box = Gtk.Box(spacing=40, margin=40, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        self.amount_s = ""
+        self.amount_label = Gtk.Label(label=f"{self.cur}0", xalign=0.5)
+        self.amount_label.get_style_context().add_class("amount")
+        left.pack_start(self.amount_label, False, False, 0)
+        grid = Gtk.Grid(row_spacing=10, column_spacing=10, halign=Gtk.Align.CENTER)
+        keys = ["7", "8", "9", "4", "5", "6", "1", "2", "3", ".", "0", "⌫"]
+        for i, kch in enumerate(keys):
+            b = Gtk.Button(label=kch); b.get_style_context().add_class("key")
+            b.connect("clicked", self.on_keypad, kch)
+            grid.attach(b, i % 3, i // 3, 1, 1)
+        left.pack_start(grid, False, False, 0)
+        quick = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
+        for amt in (50, 100, 150, 200):
+            b = Gtk.Button(label=money(amt, self.cur)); b.get_style_context().add_class("chip")
+            b.connect("clicked", lambda _b, v=amt: self.set_amount(str(v)))
+            quick.pack_start(b, False, False, 0)
+        left.pack_start(quick, False, False, 0)
+        box.pack_start(left, False, False, 0)
+
+        right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16, valign=Gtk.Align.CENTER)
+        lab = Gtk.Label(label="WHAT FOR", xalign=0); lab.get_style_context().add_class("kicker")
+        right.pack_start(lab, False, False, 0)
+        kinds = Gtk.Box(spacing=8)
+        self.kind_buttons = {}
+        first = None
+        for kd in KINDS:
+            b = Gtk.RadioButton.new_with_label_from_widget(first, KIND_TITLES[kd])
+            b.set_mode(False); b.get_style_context().add_class("chip")
+            first = first or b
+            self.kind_buttons[kd] = b
+            kinds.pack_start(b, False, False, 0)
+        self.kind_buttons["balance"].set_active(True)
+        right.pack_start(kinds, False, False, 0)
+        lab = Gtk.Label(label="WHO", xalign=0); lab.get_style_context().add_class("kicker")
+        right.pack_start(lab, False, False, 0)
+        self.pay_client = Gtk.ComboBoxText.new_with_entry()
+        self.pay_client.get_child().set_placeholder_text("Walk-in")
+        right.pack_start(self.pay_client, False, False, 0)
+        self.pay_note = Gtk.Entry(placeholder_text="Note (optional)")
+        right.pack_start(self.pay_note, False, False, 0)
+        self.pay_booking = None
+        meth = Gtk.Label(xalign=0, wrap=True); meth.get_style_context().add_class("sub")
+        self.pay_methods_label = meth
+        right.pack_start(meth, False, False, 0)
+        right.pack_start(self.button("Show the pay code", self.show_qr_for_amount, primary=True), False, False, 10)
+        row = Gtk.Box(spacing=8)
+        row.pack_start(self.button("Paid cash ✓", lambda: self.record_from_pay("cash")), False, False, 0)
+        row.pack_start(self.button("Paid by card ✓", lambda: self.record_from_pay("card")), False, False, 0)
+        right.pack_start(row, False, False, 0)
+        box.pack_start(right, False, False, 0)
+        return box
+
+    def pay_prefill(self, amount=None, kind=None, client=None, booking=None):
+        self.set_amount("" if amount is None else (f"{float(amount):.2f}".rstrip("0").rstrip(".")))
+        if kind in self.kind_buttons:
+            self.kind_buttons[kind].set_active(True)
+        self.pay_client.remove_all()
+        names = []
+        for b in sorted([b for b in bookings() if b["status"] == "booked"], key=booking_dt):
+            if b["client"] not in names:
+                names.append(b["client"])
+        for n in names:
+            self.pay_client.append_text(n)
+        self.pay_client.get_child().set_text(client or "")
+        self.pay_booking = booking
+        ms = configured_methods(self.s)
+        self.pay_methods_label.set_text(("Clients scan: " + ", ".join(METHOD_TITLES[m] for m in ms)) if ms else "No payment apps set up yet — add them under Money › Settings. Cash and card still record.")
+
+    def on_keypad(self, _b, k):
+        if k == "⌫":
+            self.set_amount(self.amount_s[:-1])
+        elif k == ".":
+            if "." not in self.amount_s:
+                self.set_amount((self.amount_s or "0") + ".")
+        elif len(self.amount_s.split(".")[0]) < 5 and not ("." in self.amount_s and len(self.amount_s.split(".")[1]) >= 2):
+            self.set_amount(self.amount_s + k)
+
+    def set_amount(self, s):
+        self.amount_s = s
+        try:
+            v = float(s or 0)
+        except ValueError:
+            v = 0
+        self.amount_label.set_text(money(v, self.cur) if s else f"{self.cur}0")
+
+    def pay_kind(self):
+        return next(k for k, b in self.kind_buttons.items() if b.get_active())
+
+    def amount_value(self):
+        try:
+            return round(float(self.amount_s or 0), 2)
+        except ValueError:
+            return 0.0
+
+    def record_from_pay(self, method):
+        v = self.amount_value()
+        if v <= 0:
+            self.say("Type the amount first.")
+            return
+        e = record_payment(v, method, self.pay_client.get_child().get_text(), self.pay_kind(), self.pay_note.get_text(), booking=self.pay_booking)
+        self.say(f"{money(e['amount'], self.cur)} recorded · {METHOD_TITLES.get(method, method)}")
+        self.set_amount("")
+        self.pay_booking = None
+        self.show_page("feed")
+
+    # ---- the QR page
+    def make_qr_page(self):
+        Gtk = self.Gtk
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin=30, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        self.qr_kicker = Gtk.Label(); self.qr_kicker.get_style_context().add_class("kicker")
+        self.qr_title = Gtk.Label(); self.qr_title.get_style_context().add_class("big")
+        self.qr_sub = Gtk.Label(wrap=True, justify=Gtk.Justification.CENTER); self.qr_sub.get_style_context().add_class("sub")
+        box.pack_start(self.qr_kicker, False, False, 0)
+        box.pack_start(self.qr_title, False, False, 0)
+        self.qr_methods = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
+        box.pack_start(self.qr_methods, False, False, 6)
+        self.qr_image = Gtk.Image()
+        frame = Gtk.Box(); frame.get_style_context().add_class("card"); frame.set_halign(Gtk.Align.CENTER)
+        frame.add(self.qr_image)
+        box.pack_start(frame, False, False, 6)
+        self.qr_handle = Gtk.Label(); self.qr_handle.get_style_context().add_class("title")
+        self.qr_handle.set_selectable(True)
+        box.pack_start(self.qr_handle, False, False, 0)
+        box.pack_start(self.qr_sub, False, False, 0)
+        self.qr_buttons = Gtk.Box(spacing=10, halign=Gtk.Align.CENTER, margin_top=14)
+        box.pack_start(self.qr_buttons, False, False, 0)
+        self.qr_state = {}
+        return box
+
+    def qr_size(self):
+        h = 1080
+        disp = self.Gdk.Display.get_default()
+        mon = disp.get_primary_monitor() or disp.get_monitor(0) if disp else None
+        if mon:
+            h = mon.get_geometry().height
+        return max(260, min(460, h - 440))
+
+    def set_qr(self, text, size=None):
+        size = size or self.qr_size()
+        try:
+            data = qr_png(text, box=10)
+        except Exception as ex:  # noqa: BLE001
+            self.qr_image.clear()
+            self.qr_handle.set_text(f"Could not make the code: {ex}")
+            return
+        loader = self.GdkPixbuf.PixbufLoader.new_with_type("png")
+        loader.write(data); loader.close()
+        pb = loader.get_pixbuf().scale_simple(size, size, self.GdkPixbuf.InterpType.NEAREST)
+        self.qr_image.set_from_pixbuf(pb)
+
+    def show_qr_for_amount(self):
+        v = self.amount_value()
+        if v <= 0:
+            self.say("Type the amount first.")
+            return
+        ms = configured_methods(self.s)
+        kind, client = self.pay_kind(), self.pay_client.get_child().get_text().strip()
+        self.qr_state = {"amount": v, "kind": kind, "client": client, "booking": self.pay_booking, "note": self.pay_note.get_text().strip()}
+        self.qr_kicker.set_text(" · ".join(x for x in (KIND_TITLES[kind].upper(), client.upper()) if x) or "PAYMENT")
+        self.qr_title.set_text(money(v, self.cur))
+        for ch in self.qr_methods.get_children():
+            self.qr_methods.remove(ch)
+        for ch in self.qr_buttons.get_children():
+            self.qr_buttons.remove(ch)
+        if ms:
+            first = None
+            for m in ms:
+                b = self.Gtk.RadioButton.new_with_label_from_widget(first, METHOD_TITLES[m])
+                b.set_mode(False); b.get_style_context().add_class("chip")
+                first = first or b
+                b.connect("toggled", lambda bb, mm=m: bb.get_active() and self.qr_method(mm))
+                self.qr_methods.pack_start(b, False, False, 0)
+            self.qr_method(ms[0])
+            for m in ms:
+                self.qr_buttons.pack_start(self.button(f"Paid ✓ {METHOD_TITLES[m]}", lambda mm=m: self.qr_paid(mm), primary=(m == ms[0])), False, False, 0)
+        else:
+            self.qr_image.clear()
+            self.qr_handle.set_text("No payment app set up")
+            self.qr_sub.set_text("Add your Venmo, Cash App, PayPal, Square or Zelle once under Money › Settings.")
+        self.qr_buttons.pack_start(self.button("Paid cash ✓", lambda: self.qr_paid("cash")), False, False, 0)
+        self.qr_buttons.pack_start(self.button("Back", lambda: self.show_page("pay")), False, False, 0)
+        self.qr_methods.show_all(); self.qr_buttons.show_all()
+        self.show_page("qr")
+
+    def qr_method(self, m):
+        st = self.qr_state
+        note = st.get("note") or " ".join(x for x in (st.get("kind", "").capitalize(), st.get("client", "")) if x)
+        link = pay_link(m, st["amount"], note, self.s)
+        self.qr_state["method"] = m
+        if m == "zelle":
+            self.set_qr(link)
+            self.qr_handle.set_text(link)
+            self.qr_sub.set_text(f"Zelle has no pay link: send {money(st['amount'], self.cur)} to this number or e-mail in your banking app.")
+        else:
+            self.set_qr(link)
+            handle = self.s["pay"][m]
+            self.qr_handle.set_text(handle if m != "square" else "Square checkout")
+            self.qr_sub.set_text("Scan with the phone camera. The amount is filled in." if m != "square" else f"Scan with the phone camera and enter {money(st['amount'], self.cur)}.")
+
+    def qr_paid(self, method):
+        st = self.qr_state
+        e = record_payment(st["amount"], method, st.get("client", ""), st.get("kind", "other"), st.get("note", ""), booking=st.get("booking"))
+        self.say(f"{money(e['amount'], self.cur)} recorded · {METHOD_TITLES.get(method, method)}")
+        self.set_amount("")
+        self.pay_booking = None
+        self.show_page("feed")
+
+    def show_static_qr(self, which):
+        link = self.s.get("review_link") if which == "review" else (self.s.get("booking_link") or profile()["links"].get("booking", ""))
+        if not link:
+            self.say("No link set — add it under Money › Settings.")
+            return
+        if not link.startswith("http"):
+            link = "https://" + link
+        for ch in self.qr_methods.get_children():
+            self.qr_methods.remove(ch)
+        for ch in self.qr_buttons.get_children():
+            self.qr_buttons.remove(ch)
+        self.qr_kicker.set_text("SCAN ME")
+        self.qr_title.set_text("Leave a review" if which == "review" else "Book your next session")
+        self.set_qr(link)
+        self.qr_handle.set_text(re.sub(r"^https?://", "", link)[:48])
+        self.qr_sub.set_text("Thank you — it means a lot to a small studio." if which == "review" else "Pick a day that suits you; a deposit holds the slot.")
+        self.qr_buttons.pack_start(self.button("Done", lambda: self.show_page("feed"), primary=True), False, False, 0)
+        self.qr_buttons.show_all()
+        self.show_page("qr")
+
+    # ---- book
+    def make_book(self):
+        Gtk = self.Gtk
+        box = Gtk.Box(spacing=36, margin=40, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        for text in ("WHO",):
+            l = Gtk.Label(label=text, xalign=0); l.get_style_context().add_class("kicker"); left.pack_start(l, False, False, 0)
+        self.book_client = Gtk.Entry(placeholder_text="Client name")
+        comp = Gtk.EntryCompletion(); store = Gtk.ListStore(str)
+        for n in sorted(clients()):
+            store.append([n])
+        comp.set_model(store); comp.set_text_column(0); comp.set_inline_completion(True)
+        self.book_client.set_completion(comp)
+        left.pack_start(self.book_client, False, False, 0)
+        l = Gtk.Label(label="WHAT", xalign=0); l.get_style_context().add_class("kicker"); left.pack_start(l, False, False, 0)
+        self.book_what = Gtk.Entry(placeholder_text="Dragon, forearm, black and grey")
+        left.pack_start(self.book_what, False, False, 0)
+        l = Gtk.Label(label="PRICE", xalign=0); l.get_style_context().add_class("kicker"); left.pack_start(l, False, False, 0)
+        self.book_price = Gtk.Entry(placeholder_text="0", input_purpose=Gtk.InputPurpose.NUMBER)
+        left.pack_start(self.book_price, False, False, 0)
+        row = Gtk.Box(spacing=6)
+        for v in (150, 250, 400, 600):
+            b = Gtk.Button(label=money(v, self.cur)); b.get_style_context().add_class("chip")
+            b.connect("clicked", lambda _b, vv=v: self.book_price.set_text(str(vv)))
+            row.pack_start(b, False, False, 0)
+        left.pack_start(row, False, False, 0)
+        l = Gtk.Label(label="DEPOSIT", xalign=0); l.get_style_context().add_class("kicker"); left.pack_start(l, False, False, 0)
+        row = Gtk.Box(spacing=6)
+        self.dep_buttons = {}
+        first = None
+        for v in (0, 50, 100, 150, 200):
+            b = Gtk.RadioButton.new_with_label_from_widget(first, "None" if v == 0 else money(v, self.cur))
+            b.set_mode(False); b.get_style_context().add_class("chip")
+            first = first or b
+            self.dep_buttons[v] = b
+            row.pack_start(b, False, False, 0)
+        dd = int(self.s.get("default_deposit", 50))
+        self.dep_buttons.get(dd, self.dep_buttons[0]).set_active(True)
+        left.pack_start(row, False, False, 0)
+        box.pack_start(left, False, False, 0)
+
+        right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        l = Gtk.Label(label="WHEN", xalign=0); l.get_style_context().add_class("kicker"); right.pack_start(l, False, False, 0)
+        self.book_cal = Gtk.Calendar()
+        right.pack_start(self.book_cal, False, False, 0)
+        grid = Gtk.Grid(row_spacing=6, column_spacing=6)
+        self.time_buttons = {}
+        first = None
+        h0, h1 = [int(x.split(":")[0]) for x in self.s.get("hours", ["10:00", "19:30"])]
+        slots = []
+        h, mi = h0, 0
+        while h < h1 or (h == h1 and mi <= int(self.s.get("hours", ["10:00", "19:30"])[1].split(":")[1])):
+            slots.append(f"{h:02d}:{mi:02d}")
+            mi += 30
+            if mi == 60:
+                h, mi = h + 1, 0
+        for i, t in enumerate(slots):
+            lbl = dt.datetime.strptime(t, "%H:%M").strftime("%-I:%M %p").replace(":00", "")
+            b = Gtk.RadioButton.new_with_label_from_widget(first, lbl)
+            b.set_mode(False); b.get_style_context().add_class("chip")
+            first = first or b
+            self.time_buttons[t] = b
+            grid.attach(b, i % 5, i // 5, 1, 1)
+        right.pack_start(grid, False, False, 0)
+        right.pack_start(self.button("Book it", self.do_book, primary=True), False, False, 12)
+        box.pack_start(right, False, False, 0)
+        return box
+
+    def book_when(self):
+        y, m, d = self.book_cal.get_date()
+        t = next(t for t, b in self.time_buttons.items() if b.get_active())
+        return dt.datetime(y, m + 1, d, int(t[:2]), int(t[3:]))
+
+    def apply_prefill(self, page, pre):
+        if page == "book":
+            if pre.get("client"):
+                self.book_client.set_text(pre["client"])
+            if pre.get("what"):
+                self.book_what.set_text(pre["what"])
+            if pre.get("when"):
+                try:
+                    w = parse_when(pre["when"])
+                    self.book_cal.select_month(w.month - 1, w.year); self.book_cal.select_day(w.day)
+                    key = f"{w.hour:02d}:{(w.minute // 30) * 30:02d}"
+                    if key in self.time_buttons:
+                        self.time_buttons[key].set_active(True)
+                except ValueError:
+                    self.say(f"Didn't understand the time “{pre['when']}” — pick it here.")
+        if page == "pay":
+            self.pay_prefill(pre.get("amount"), pre.get("kind"), pre.get("client"))
+            if pre.get("amount"):
+                self.show_qr_for_amount()
+        if page == "papers" and pre.get("consent"):
+            flow = self.start_consent(pre.get("client", ""), pre.get("what", ""))
+            if pre.get("step") in ("statements", "sign"):
+                flow.stack.set_visible_child_name(pre["step"])  # screenshots of the later steps
+        if page == "qr" and pre.get("which"):
+            self.show_static_qr(pre["which"])
+
+    def do_book(self):
+        name = self.book_client.get_text().strip()
+        if not name:
+            self.say("Who is it for? Type the client's name.")
+            self.book_client.grab_focus()
+            return
+        try:
+            price = float(self.book_price.get_text().strip() or 0)
+        except ValueError:
+            self.say("The price has to be a number.")
+            return
+        dep = next(v for v, b in self.dep_buttons.items() if b.get_active())
+        b = add_booking(name, self.book_what.get_text() or "Tattoo", self.book_when(), price, dep)
+        self.book_client.set_text(""); self.book_what.set_text(""); self.book_price.set_text("")
+        self.say(f"Booked {b['client']} · {booking_dt(b).strftime('%a %b %-d, %-I:%M %p')}")
+        if dep > 0:
+            self.pay_prefill(dep, "deposit", b["client"], b["id"])
+            self.show_page("pay")
+            self.show_qr_for_amount()
+        else:
+            self.show_page("feed")
+
+    # ---- papers
+    def make_papers(self):
+        Gtk = self.Gtk
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24, margin=40, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        row = Gtk.Box(spacing=24, homogeneous=True)
+        for title, sub, prim, prim_cb, sec in (
+            ("Consent form", "Who, date of birth, phone, address, the statements, a finger signature. Saved as PDF and kept two years, as the health rules ask.", "Start a consent form", lambda: self.start_consent("", ""), None),
+            ("Aftercare sheet", "Your studio's aftercare instructions with your name and handle on top. Print one per client, or show it on the screen.", "Print aftercare", lambda: self.aftercare("print"), ("Show on screen", lambda: self.aftercare("show"))),
+        ):
+            card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10); card.get_style_context().add_class("card")
+            t = Gtk.Label(label=title, xalign=0); t.get_style_context().add_class("title"); card.pack_start(t, False, False, 0)
+            s = Gtk.Label(label=sub, xalign=0, wrap=True); s.get_style_context().add_class("sub"); s.set_max_width_chars(38); card.pack_start(s, False, False, 0)
+            card.pack_start(self.button(prim, prim_cb, primary=True), False, False, 8)
+            if sec:
+                card.pack_start(self.button(sec[0], sec[1]), False, False, 0)
+            row.pack_start(card, True, True, 0)
+        box.pack_start(row, False, False, 0)
+        l = Gtk.Label(label="RECENT CONSENT FORMS", xalign=0); l.get_style_context().add_class("kicker"); box.pack_start(l, False, False, 0)
+        self.consent_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.pack_start(self.consent_list, False, False, 0)
+        return box
+
+    def refresh_papers(self):
+        Gtk = self.Gtk
+        for ch in self.consent_list.get_children():
+            self.consent_list.remove(ch)
+        d = os.path.join(BUSINESS, "Consent")
+        files = sorted((f for f in os.listdir(d) if f.endswith(".pdf")), reverse=True)[:6] if os.path.isdir(d) else []
+        if not files:
+            l = Gtk.Label(label="None yet.", xalign=0); l.get_style_context().add_class("sub"); self.consent_list.pack_start(l, False, False, 0)
+        for f in files:
+            row = Gtk.Box(spacing=12); row.get_style_context().add_class("row")
+            l = Gtk.Label(label=f[:-4], xalign=0); l.get_style_context().add_class("sub"); row.pack_start(l, True, True, 0)
+            path = os.path.join(d, f)
+            row.pack_start(self.button("Open", lambda p=path: spawn(["xdg-open", p]), cls="chip"), False, False, 0)
+            row.pack_start(self.button("Print", lambda p=path: self.say(print_file(p)[1] or "Sent to the printer."), cls="chip"), False, False, 0)
+            self.consent_list.pack_start(row, False, False, 0)
+        self.consent_list.show_all()
+
+    def aftercare(self, how):
+        os.makedirs(BUSINESS, exist_ok=True)
+        out = os.path.join(BUSINESS, "Aftercare.pdf")
+        aftercare_pdf(out)
+        if how == "print":
+            ok, msg = print_file(out)
+            self.say("Aftercare sheet sent to the printer." if ok else (msg or "Could not print."))
+        else:
+            spawn(["xdg-open", out]) or self.say("Saved " + out.replace(HOME, "~"))
+
+    def start_consent(self, client, what):
+        return ConsentFlow(self, client, what)
+
+    # ---- money
+    def make_money(self):
+        Gtk = self.Gtk
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18, margin=40)
+        head = Gtk.Box()
+        l = Gtk.Label(label="MONEY", xalign=0); l.get_style_context().add_class("kicker")
+        head.pack_start(l, True, True, 0)
+        head.pack_end(self.button("Settings", lambda: self.show_page("settings"), cls="chip"), False, False, 0)
+        box.pack_start(head, False, False, 0)
+        self.tiles = {}
+        row = Gtk.Box(spacing=14, homogeneous=True)
+        for key, title in (("today", "Today"), ("week", "This week"), ("month", "This month"), ("year", "This year")):
+            tile = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4); tile.get_style_context().add_class("tile")
+            t = Gtk.Label(label=title, xalign=0); t.get_style_context().add_class("sub")
+            v = Gtk.Label(label="", xalign=0); v.get_style_context().add_class("tile-big")
+            tile.pack_start(t, False, False, 0); tile.pack_start(v, False, False, 0)
+            self.tiles[key] = v
+            row.pack_start(tile, True, True, 0)
+        box.pack_start(row, False, False, 0)
+        acts = Gtk.Box(spacing=10)
+        acts.pack_start(self.button("Export for taxes", lambda: self.say("Saved " + export_csv().replace(HOME, "~"))), False, False, 0)
+        acts.pack_start(self.button("Open the Business folder", lambda: (os.makedirs(BUSINESS, exist_ok=True), spawn(["xdg-open", BUSINESS]))), False, False, 0)
+        box.pack_start(acts, False, False, 0)
+        self.ledger_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.pack_start(self.ledger_box, True, True, 0)
+        return box
+
+    def refresh_money(self):
+        Gtk = self.Gtk
+        t = totals()
+        for k, v in self.tiles.items():
+            v.set_text(money(t[k], self.cur))
+        for ch in self.ledger_box.get_children():
+            self.ledger_box.remove(ch)
+        for e in sorted(ledger(), key=lambda e: e["when"], reverse=True)[:60]:
+            row = Gtk.Box(spacing=16); row.get_style_context().add_class("row")
+            when = dt.datetime.strptime(e["when"], "%Y-%m-%d %H:%M")
+            a = Gtk.Label(label=when.strftime("%a %b %-d · %-I:%M %p"), xalign=0); a.get_style_context().add_class("sub"); a.set_size_request(220, -1)
+            b = Gtk.Label(label=" · ".join(x for x in (e.get("client"), KIND_TITLES.get(e["kind"], e["kind"]), e.get("note")) if x), xalign=0, ellipsize=self.Pango.EllipsizeMode.END)
+            c = Gtk.Label(label=METHOD_TITLES.get(e["method"], e["method"]), xalign=1); c.get_style_context().add_class("sub")
+            d = Gtk.Label(label=money(e["amount"], self.cur), xalign=1); d.get_style_context().add_class("title"); d.set_size_request(140, -1)
+            row.pack_start(a, False, False, 0); row.pack_start(b, True, True, 0); row.pack_start(c, False, False, 0); row.pack_start(d, False, False, 0)
+            self.ledger_box.pack_start(row, False, False, 0)
+        if not ledger():
+            l = Gtk.Label(label="No payments recorded yet. Tap Get paid when the first one comes in.", xalign=0); l.get_style_context().add_class("sub")
+            self.ledger_box.pack_start(l, False, False, 0)
+        self.ledger_box.show_all()
+
+    # ---- settings
+    def make_settings(self):
+        Gtk = self.Gtk
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=40, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        l = Gtk.Label(label="HOW YOU GET PAID", xalign=0); l.get_style_context().add_class("kicker"); box.pack_start(l, False, False, 0)
+        s = Gtk.Label(label="Type each handle once. The pay code puts the amount in for the client.", xalign=0, wrap=True); s.get_style_context().add_class("sub"); box.pack_start(s, False, False, 0)
+        self.set_entries = {}
+        grid = Gtk.Grid(row_spacing=8, column_spacing=14)
+        rows = [("venmo", "Venmo username", "@yourstudio"), ("cashapp", "Cash App $cashtag", "$yourstudio"), ("paypal", "PayPal.me name", "yourstudio"),
+                ("square", "Square checkout link", "https://square.link/u/…"), ("zelle", "Zelle phone or e-mail", "555-010-0000"),
+                ("review_link", "Review link (Google)", "https://g.page/r/…/review"), ("booking_link", "Booking page", "https://…"),
+                ("default_deposit", "Usual deposit", "50"), ("printer", "Printer for papers (blank = default)", "")]
+        for i, (key, label, ph) in enumerate(rows):
+            lab = Gtk.Label(label=label, xalign=0); lab.get_style_context().add_class("sub")
+            ent = Gtk.Entry(placeholder_text=ph); ent.set_width_chars(34)
+            val = self.s["pay"].get(key, "") if key in METHODS else str(self.s.get(key, "") or "")
+            ent.set_text(val if val != "0" or key != "default_deposit" else "")
+            self.set_entries[key] = ent
+            grid.attach(lab, 0, i, 1, 1); grid.attach(ent, 1, i, 1, 1)
+        box.pack_start(grid, False, False, 0)
+        row = Gtk.Box(spacing=10, margin_top=12)
+        row.pack_start(self.button("Save", self.save_settings, primary=True), False, False, 0)
+        row.pack_start(self.button("Back", lambda: self.show_page("money")), False, False, 0)
+        box.pack_start(row, False, False, 0)
+        return box
+
+    def save_settings(self):
+        for key, ent in self.set_entries.items():
+            v = ent.get_text().strip()
+            if key == "default_deposit":
+                v = re.sub(r"[^0-9]", "", v) or "0"
+            set_setting(key, v)
+        self.s = settings()
+        self.say("Saved.")
+        self.show_page("feed")
+
+
+class ConsentFlow:
+    """Three screens in their own window: who · the statements · sign."""
+
+    def __init__(self, app, client, what):
+        Gtk = app.Gtk
+        self.app, self.Gtk = app, Gtk
+        self.strokes, self.cur_stroke = [], None
+        self.win = Gtk.Window(title="Consent form", transient_for=app.win, modal=True)
+        self.win.set_default_size(1000, 700)
+        self.win.maximize()
+        if app.shot:
+            app.shot_target = self.win
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL); root.get_style_context().add_class("till-root")
+        self.win.add(root)
+        self.stack = Gtk.Stack(); self.stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
+        root.pack_start(app.scrolled(self.stack), True, True, 0)
+        # 1 who
+        who = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=40, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        k = Gtk.Label(label="CONSENT · 1 OF 3", xalign=0); k.get_style_context().add_class("kicker"); who.pack_start(k, False, False, 0)
+        t = Gtk.Label(label="Who is getting tattooed?", xalign=0); t.get_style_context().add_class("title"); who.pack_start(t, False, False, 0)
+        self.e = {}
+        known = clients().get(client, {}) if client else {}
+        for key, ph, val in (("client", "Full name", client), ("dob", "Date of birth  YYYY-MM-DD", known.get("dob", "")), ("phone", "Phone", known.get("phone", "")),
+                             ("address", "Address", known.get("address", "")), ("email", "E-mail (optional)", known.get("email", "")),
+                             ("design", "The tattoo", what), ("placement", "Where on the body", "")):
+            ent = Gtk.Entry(placeholder_text=ph); ent.set_text(val or ""); ent.set_width_chars(40)
+            self.e[key] = ent
+            who.pack_start(ent, False, False, 0)
+        row = Gtk.Box(spacing=10, margin_top=10)
+        row.pack_start(app.button("Next", self.to_statements, primary=True), False, False, 0)
+        row.pack_start(app.button("Cancel", self.win.destroy), False, False, 0)
+        who.pack_start(row, False, False, 0)
+        self.stack.add_named(who, "who")
+        # 2 statements
+        st = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=40, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        k = Gtk.Label(label="CONSENT · 2 OF 3", xalign=0); k.get_style_context().add_class("kicker"); st.pack_start(k, False, False, 0)
+        t = Gtk.Label(label="Read with the client. Tap each one that is true.", xalign=0, wrap=True); t.get_style_context().add_class("title"); t.set_max_width_chars(40); st.pack_start(t, False, False, 0)
+        self.checks = {}
+        for key, text in CONSENT_STATEMENTS:
+            cb = Gtk.CheckButton(label=text); cb.get_child().set_line_wrap(True); cb.get_child().set_max_width_chars(80); cb.get_child().set_xalign(0)
+            self.checks[key] = cb
+            st.pack_start(cb, False, False, 0)
+        self.photo_cb = Gtk.CheckButton(label="Optional: " + PHOTO_STATEMENT); self.photo_cb.get_child().set_line_wrap(True); self.photo_cb.get_child().set_max_width_chars(80)
+        st.pack_start(self.photo_cb, False, False, 6)
+        row = Gtk.Box(spacing=10, margin_top=10)
+        row.pack_start(app.button("Next: sign", self.to_sign, primary=True), False, False, 0)
+        row.pack_start(app.button("Back", lambda: self.stack.set_visible_child_name("who")), False, False, 0)
+        st.pack_start(row, False, False, 0)
+        self.stack.add_named(st, "statements")
+        # 3 sign
+        sg = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=40, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        k = Gtk.Label(label="CONSENT · 3 OF 3", xalign=0); k.get_style_context().add_class("kicker"); sg.pack_start(k, False, False, 0)
+        t = Gtk.Label(label="Sign with a finger", xalign=0); t.get_style_context().add_class("title"); sg.pack_start(t, False, False, 0)
+        self.pad = Gtk.DrawingArea(); self.pad.set_size_request(760, 300); self.pad.get_style_context().add_class("sigpad")
+        self.pad.add_events(app.Gdk.EventMask.BUTTON_PRESS_MASK | app.Gdk.EventMask.BUTTON_RELEASE_MASK | app.Gdk.EventMask.POINTER_MOTION_MASK | app.Gdk.EventMask.TOUCH_MASK)
+        self.pad.connect("draw", self.on_draw)
+        self.pad.connect("button-press-event", self.pen_down)
+        self.pad.connect("motion-notify-event", self.pen_move)
+        self.pad.connect("button-release-event", self.pen_up)
+        self.pad.connect("touch-event", self.on_touch)
+        sg.pack_start(self.pad, False, False, 0)
+        row = Gtk.Box(spacing=10, margin_top=10)
+        row.pack_start(app.button("Save the form", self.finish, primary=True), False, False, 0)
+        row.pack_start(app.button("Clear", self.clear), False, False, 0)
+        row.pack_start(app.button("Back", lambda: self.stack.set_visible_child_name("statements")), False, False, 0)
+        sg.pack_start(row, False, False, 0)
+        self.stack.add_named(sg, "sign")
+        # done
+        dn = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin=40, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        self.done_title = Gtk.Label(); self.done_title.get_style_context().add_class("title"); dn.pack_start(self.done_title, False, False, 0)
+        self.done_sub = Gtk.Label(wrap=True); self.done_sub.get_style_context().add_class("sub"); dn.pack_start(self.done_sub, False, False, 0)
+        row = Gtk.Box(spacing=10, margin_top=10)
+        row.pack_start(app.button("Print a copy", self.print_copy), False, False, 0)
+        row.pack_start(app.button("Done", self.win.destroy, primary=True), False, False, 0)
+        dn.pack_start(row, False, False, 0)
+        self.stack.add_named(dn, "done")
+        self.out = None
+        self.win.show_all()
+
+    def to_statements(self):
+        if not self.e["client"].get_text().strip():
+            self.app.say("The client's name is needed."); return
+        dob = self.e["dob"].get_text().strip()
+        try:
+            age = (now().date() - dt.date.fromisoformat(dob)).days // 365
+        except ValueError:
+            self.app.say("Date of birth as YYYY-MM-DD, please."); return
+        if age < 18:
+            self.app.say(f"Under 18 ({age}). Tattooing a minor is not allowed; stop here."); return
+        self.stack.set_visible_child_name("statements")
+
+    def to_sign(self):
+        missing = [k for k, cb in self.checks.items() if not cb.get_active()]
+        if missing:
+            self.app.say("Every statement has to be ticked before signing."); return
+        self.stack.set_visible_child_name("sign")
+
+    def pen_down(self, _w, ev):
+        self.cur_stroke = [self.norm(ev.x, ev.y)]
+        self.strokes.append(self.cur_stroke)
+        return True
+
+    def pen_move(self, _w, ev):
+        if self.cur_stroke is not None and (ev.state & self.app.Gdk.ModifierType.BUTTON1_MASK):
+            self.cur_stroke.append(self.norm(ev.x, ev.y)); self.pad.queue_draw()
+        return True
+
+    def pen_up(self, *_a):
+        self.cur_stroke = None; self.pad.queue_draw()
+        return True
+
+    def on_touch(self, _w, ev):
+        Gdk = self.app.Gdk
+        if ev.type == Gdk.EventType.TOUCH_BEGIN:
+            self.cur_stroke = [self.norm(ev.x, ev.y)]; self.strokes.append(self.cur_stroke)
+        elif ev.type == Gdk.EventType.TOUCH_UPDATE and self.cur_stroke is not None:
+            self.cur_stroke.append(self.norm(ev.x, ev.y)); self.pad.queue_draw()
+        elif ev.type in (Gdk.EventType.TOUCH_END, Gdk.EventType.TOUCH_CANCEL):
+            self.cur_stroke = None; self.pad.queue_draw()
+        return True
+
+    def norm(self, x, y):
+        a = self.pad.get_allocation()
+        return (round(min(max(x / max(a.width, 1), 0), 1), 4), round(min(max(y / max(a.height, 1), 0), 1), 4))
+
+    def on_draw(self, w, cr):
+        a = w.get_allocation()
+        cr.set_source_rgb(1, 1, 1); cr.paint()
+        cr.set_source_rgb(0.8, 0.8, 0.85); cr.set_line_width(1)
+        cr.move_to(40, a.height - 60); cr.line_to(a.width - 40, a.height - 60); cr.stroke()
+        cr.set_source_rgb(0.05, 0.05, 0.25); cr.set_line_width(3.2); cr.set_line_cap(1); cr.set_line_join(1)
+        for s in self.strokes:
+            pts = [(x * a.width, y * a.height) for x, y in s]
+            if len(pts) == 1:
+                cr.arc(pts[0][0], pts[0][1], 1.6, 0, 6.3); cr.fill(); continue
+            cr.move_to(*pts[0])
+            for p in pts[1:]:
+                cr.line_to(*p)
+            cr.stroke()
+
+    def clear(self):
+        self.strokes = []; self.pad.queue_draw()
+
+    def finish(self):
+        if sum(len(s) for s in self.strokes) < 8:
+            self.app.say("A signature is needed."); return
+        g = {k: e.get_text().strip() for k, e in self.e.items()}
+        self.out = save_consent(g["client"], g["dob"], g["phone"], g["address"], g["design"], g["placement"], self.strokes, photos=self.photo_cb.get_active(), email=g["email"])
+        self.done_title.set_text("Saved")
+        self.done_sub.set_text(self.out.replace(HOME, "~") + "\nKept with the studio's records for at least two years.")
+        self.stack.set_visible_child_name("done")
+
+    def print_copy(self):
+        if self.out:
+            ok, msg = print_file(self.out)
+            self.app.say("Printing a copy." if ok else (msg or "Could not print."))
+
+
+# ------------------------------------------------------------------ CLI
+
+def fmt_booking(b):
+    return f"{b['id']}  {b['when']}  {b['client']:<18} {b['what']:<28} {money(b['price'])}" + (f"  deposit {money(b['deposit'])}{'' if b['deposit_paid'] else ' OWED'}" if b["deposit"] else "") + f"  [{b['status']}]"
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="flattoo-till", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd")
+    g = sub.add_parser("gui"); g.add_argument("--page", default="feed"); g.add_argument("--shot"); g.add_argument("--quit-after", type=float); g.add_argument("--fullscreen", action="store_true")
+    p = sub.add_parser("pay"); p.add_argument("amount", nargs="?"); p.add_argument("--client", default=""); p.add_argument("--kind", default="balance"); p.add_argument("--note", default="")
+    p.add_argument("--shot"); p.add_argument("--quit-after", type=float)
+    p = sub.add_parser("paid"); p.add_argument("amount"); p.add_argument("--method", required=True); p.add_argument("--client", default=""); p.add_argument("--kind", default="other"); p.add_argument("--note", default="")
+    p.add_argument("--booking")
+    p = sub.add_parser("book"); p.add_argument("--client", required=True); p.add_argument("--what", default="Tattoo"); p.add_argument("--when", required=True); p.add_argument("--price", type=float, default=0); p.add_argument("--deposit", type=float, default=0)
+    p = sub.add_parser("book-gui"); p.add_argument("--client", default=""); p.add_argument("--what", default=""); p.add_argument("--when", default="")
+    p = sub.add_parser("bookings"); p.add_argument("range", nargs="?", default="week", choices=["today", "week", "all"])
+    for c in ("done", "cancel", "deposit-paid"):
+        p = sub.add_parser(c); p.add_argument("id")
+    p = sub.add_parser("consent"); p.add_argument("--client", default=""); p.add_argument("--what", default=""); p.add_argument("--step", default="who", choices=["who", "statements", "sign"]); p.add_argument("--shot")
+    p = sub.add_parser("consent-pdf")
+    for a in ("--client", "--dob", "--phone", "--address", "--design", "--placement"):
+        p.add_argument(a, default="")
+    p.add_argument("--email", default=""); p.add_argument("--signature", help="JSON [[ [x,y], ... ], ...] in 0..1"); p.add_argument("--photos", action="store_true"); p.add_argument("out")
+    p = sub.add_parser("aftercare"); p.add_argument("how", nargs="?", default="show", choices=["show", "print", "pdf"]); p.add_argument("out", nargs="?")
+    sub.add_parser("review"); sub.add_parser("booklink")
+    p = sub.add_parser("money"); p.add_argument("range", nargs="?", default="today", choices=["today", "week", "month", "year"])
+    p = sub.add_parser("export"); p.add_argument("year", nargs="?", type=int)
+    p = sub.add_parser("feed"); p.add_argument("--json", action="store_true")
+    p = sub.add_parser("paylink"); p.add_argument("method", choices=METHODS); p.add_argument("amount"); p.add_argument("note", nargs="?", default="")
+    sub.add_parser("brief"); sub.add_parser("settings")
+    p = sub.add_parser("set"); p.add_argument("key"); p.add_argument("value")
+    p = sub.add_parser("get"); p.add_argument("key")
+    a = ap.parse_args(argv)
+    cmd = a.cmd or "gui"
+
+    if cmd == "gui":
+        App(page=a.page, shot=a.shot, quit_after=a.quit_after, fullscreen=a.fullscreen); _main_loop(); return 0
+    if cmd == "pay":
+        pre = {"amount": a.amount, "kind": a.kind, "client": a.client} if a.amount else {}
+        App(page="pay", prefill=pre, shot=a.shot, quit_after=a.quit_after); _main_loop(); return 0
+    if cmd == "paid":
+        e = record_payment(a.amount, a.method, a.client, a.kind, a.note, booking=a.booking)
+        print(f"{e['id']}  {e['when']}  {money(e['amount'])}  {METHOD_TITLES.get(a.method, a.method)}  {e['kind']}  {e['client']}"); return 0
+    if cmd == "book":
+        b = add_booking(a.client, a.what, parse_when(a.when), a.price, a.deposit)
+        print(fmt_booking(b)); return 0
+    if cmd == "book-gui":
+        App(page="book", prefill={"client": a.client, "what": a.what, "when": a.when}); _main_loop(); return 0
+    if cmd == "bookings":
+        ref = now()
+        for b in sorted(bookings(), key=booking_dt):
+            d = booking_dt(b).date()
+            if a.range == "today" and d != ref.date():
+                continue
+            if a.range == "week" and not (ref.date() <= d <= ref.date() + dt.timedelta(days=7)):
+                continue
+            if a.range != "all" and b["status"] != "booked":
+                continue
+            print(fmt_booking(b))
+        return 0
+    if cmd in ("done", "cancel", "deposit-paid"):
+        b = update_booking(a.id, **({"status": "done"} if cmd == "done" else {"status": "cancelled"} if cmd == "cancel" else {"deposit_paid": True}))
+        if not b:
+            print("no such booking", file=sys.stderr); return 1
+        print(fmt_booking(b)); return 0
+    if cmd == "consent":
+        App(page="papers", prefill={"consent": True, "client": a.client, "what": a.what, "step": a.step}, shot=a.shot); _main_loop(); return 0
+    if cmd == "consent-pdf":
+        strokes = json.load(open(a.signature)) if a.signature else []
+        print(consent_pdf(a.out, a.client, a.dob, a.phone, a.address, a.design, a.placement, strokes, photos=a.photos, email=a.email)); return 0
+    if cmd == "aftercare":
+        out = a.out or os.path.join(BUSINESS, "Aftercare.pdf")
+        aftercare_pdf(out)
+        if a.how == "print":
+            ok, msg = print_file(out); print(msg or ("printed" if ok else "could not print")); return 0 if ok else 1
+        if a.how == "show":
+            spawn(["xdg-open", out])
+        print(out); return 0
+    if cmd in ("review", "booklink"):
+        App(page="qr", prefill={"which": "review" if cmd == "review" else "booking"}); _main_loop(); return 0
+    if cmd == "money":
+        t = totals()
+        print(money(t[a.range]))
+        if a.range == "today":
+            print(f"{t['count_today']} payments today · week {money(t['week'])} · month {money(t['month'])} · year {money(t['year'])}")
+        return 0
+    if cmd == "export":
+        print(export_csv(a.year)); return 0
+    if cmd == "feed":
+        cards = build_feed()
+        if a.json:
+            print(json.dumps(cards, indent=1))
+        else:
+            for c in cards:
+                print(f"[{c['kicker']}] {c['title']}  {c['big']}  — {c['sub']}\n    → {c['primary']['label']}" + ("  | " + " · ".join(x["label"] for x in c["actions"]) if c["actions"] else ""))
+        return 0
+    if cmd == "paylink":
+        link = pay_link(a.method, a.amount, a.note)
+        if not link:
+            print(f"{a.method} is not set up (flattoo-till set {a.method} HANDLE)", file=sys.stderr); return 1
+        print(link); return 0
+    if cmd == "brief":
+        text = brief_text()
+        print(text)
+        if os.environ.get("DISPLAY") and shutil.which("notify-send"):
+            run(["notify-send", "-a", "Money", "-i", "flattoo-till", "Today at the shop", text])
+        return 0
+    if cmd == "settings":
+        App(page="settings"); _main_loop(); return 0
+    if cmd == "set":
+        set_setting(a.key, a.value); print(f"{a.key} = {a.value}"); return 0
+    if cmd == "get":
+        s = settings()
+        print(s["pay"].get(a.key, "") if a.key in METHODS else s.get(a.key, "")); return 0
+    ap.print_help()
+    return 2
+
+
+def _main_loop():
+    import gi
+    gi.require_version("Gtk", "3.0")
+    from gi.repository import Gtk
+    Gtk.main()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

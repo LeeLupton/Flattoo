@@ -67,6 +67,7 @@
           flattoo-copilot
           flattoo-wiki
           flattoo-assist
+          flattoo-till
           phomemo-cups
           brother-pj723-lpr
           brother-pj723-cupswrapper
@@ -108,6 +109,8 @@
         copilot-admin = pkgs.flattoo-copilot.tests.admin;
         wiki-content = pkgs.flattoo-wiki.tests.content;
         assist-offline = pkgs.flattoo-assist.tests.offline;
+        till-offline = pkgs.flattoo-till.tests.offline;
+        till-gui = pkgs.flattoo-till.tests.gui;
         site = self.packages.${system}.site;
         # Every catalog entry must name a real package in the pinned nixpkgs.
         copilot-catalog = pkgs.runCommand "flattoo-copilot-catalog" {

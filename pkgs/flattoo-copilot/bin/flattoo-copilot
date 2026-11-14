@@ -59,6 +59,12 @@ ACTIONS = {
     "effects": "Window effects on or off (rounded corners, shadows, blur, animations)",
     "client": "Show a client your work: the portfolio fills the screen, Esc ends it and locks the laptop",
     "shop-display": "Shop display: show your work on the screen when the laptop sits idle",
+    "pay": "Get paid: a code the client scans with the amount filled in (Venmo, Cash App, PayPal, Square, Zelle); cash and card record too",
+    "book": "Book a client: who, what, when, price, deposit",
+    "money": "Money: today's take, this week, this month, every payment; the feed of who is next and what is owed",
+    "consent": "The consent form: client details, the statements, a finger signature, saved as PDF",
+    "aftercare": "Print or show the aftercare sheet",
+    "review": "Show the review code (or the booking code) for the client to scan",
     "layout": "Open a window layout",
     "lock": "Lock the setup",
     "installed": "List what is installed",
@@ -72,6 +78,15 @@ ACTIONS = {
 
 # Checked in order, after a strong catalog hit. First match wins.
 SYNONYMS = {
+    "consent": ["consent", "waiver", "release form", "paperwork", "sign the form", "sign a form", "intake form", "client form", "the form"],
+    "aftercare": ["aftercare", "after care", "healing instructions", "care sheet", "care instructions"],
+    "review": ["review code", "leave a review", "review link", "booking code", "booking link", "book again", "rebook code", "scan to book"],
+    "pay": ["get paid", "take a deposit", "take the deposit", "take payment", "take a payment", "charge them", "charge him", "charge her", "charge the client",
+            "pay code", "payment code", "qr code", "venmo", "cash app", "cashapp", "paypal", "zelle", "deposit", "collect", "invoice", "bill them", "they owe", "owes me", "tip", "tips"],
+    "book": ["book ", "booking", "appointment", "schedule a client", "schedule maya", "pencil in", "put in the book", "walk-in", "walk in", "next session", "rebook"],
+    "money": ["how much did i make", "how much have i made", "money", "today's take", "todays take", "take today", "earnings", "earned", "income", "revenue",
+              "sales", "ledger", "for taxes", "tax export", "export the", "who is next", "who's next", "whos next", "what's next", "next client", "my day",
+              "today's clients", "todays clients", "who do i have", "what do i have today", "what do i have on", "my bookings", "the feed"],
     "update-status": ["last update", "up to date", "when did it update", "did it update", "is it updated"],
     "update": ["update", "upgrade", "security", "patch", "latest version"],
     "disk": ["disk", "storage", "free space", "free up", "clean up", "cleanup", "running out of", "out of space", "out of room", "space left", "full"],
@@ -104,6 +119,10 @@ SYNONYMS = {
 SHEET = [
     ("Fix the stencil printer", "printer", "the printer isn't working"),
     ("Print a stencil", "document-print", "print a stencil"),
+    ("Get paid", "flattoo-till", "get paid"),
+    ("Book a client", "x-office-calendar", "book a client"),
+    ("Who's next, what's owed", "view-list", "who is next"),
+    ("Consent form", "x-office-document", "consent form"),
     ("Show a client my work", "x-office-presentation", "show a client my work"),
     ("__mode__", "", ""),  # Dark mode / Light mode, whichever applies
     ("Change the look", "preferences-desktop-theme", "change the look"),
@@ -330,6 +349,74 @@ def match_look(t):
     return cands[0][1]
 
 
+MONEY_RANGES = {"today": "today", "this week": "week", "week": "week", "this month": "month", "month": "month", "this year": "year", "year": "year"}
+
+
+def clean_name(s):
+    """A client's name as typed, letters and spaces only, title case."""
+    s = re.sub(r"[^A-Za-z' -]", "", s or "").strip()
+    s = re.sub(r"\b(the|a|my|for|from|with|to|at|on|in)\b", "", s, flags=re.I).strip()
+    return " ".join(w.capitalize() for w in s.split())[:40]
+
+
+MONEY_ACTIONS = ("consent", "aftercare", "review", "pay", "book", "money")
+
+
+def has(key, t):
+    """One of the action's phrasings, as whole words."""
+    return re.search(r"(?<![a-z])(" + "|".join(re.escape(norm(x)) for x in SYNONYMS[key]) + r")(?![a-z])", t) is not None
+
+
+def money_request(text, t):
+    """Money actions with their arguments pulled out of the sentence, or None."""
+    amount = None
+    ma = re.search(r"(?:\$\s*(\d+(?:\.\d{1,2})?)|(\d+(?:\.\d{1,2})?)\s*(?:dollars|bucks|\$))", text.lower())
+    if ma:
+        amount = ma.group(1) or ma.group(2)
+    elif re.search(r"\b(get paid|charge|deposit|take|collect|owes?)\b", t):
+        mb = re.search(r"\b(\d+(?:\.\d{1,2})?)\b", re.sub(r"\b\d{1,2}(:\d{2})?\s*(am|pm)\b", "", t))
+        amount = mb.group(1) if mb else None
+    client = None
+    raw = text.lower()
+    mc = re.search(r"\b(?:from|for|with)\s+([a-z][a-z' -]{1,30}?)(?:\s+(?:tomorrow|today|at|on|next|for|this|a|the|\d)|$|[.,!?])", t)
+    if mc and clean_name(mc.group(1)).lower() not in ("flash", "deposit", "tip", "balance", "session", "tattoo", "touch up", "it", "that", "this", ""):
+        client = clean_name(mc.group(1))
+    if has("consent", t):
+        return "consent", ({"client": client} if client else {}), 0.8
+    if has("aftercare", t):
+        return "aftercare", {"how": "print" if "print" in t else "show"}, 0.8
+    if has("review", t):
+        return "review", {"which": "booking" if re.search(r"\bbook", t) else "review"}, 0.8
+    if has("money", t) and not re.search(r"\b(get paid|charge|take (a|the|payment))\b", t):
+        rng = next((v for k, v in MONEY_RANGES.items() if k in t), None)
+        return "money", ({"range": rng} if rng else {}), 0.8
+    if re.search(r"\bbook(ing)?\b|\bappointment\b|\bpencil in\b|\bwalk ?in\b|\bschedule\b(?!.*\b(dark|night|light|look|effects)\b)", t) and not re.search(r"\b(code|link)\b", t):
+        args = {}
+        mn = re.search(r"\b(?:book|schedule|pencil in)\s+(?:in\s+)?([a-z][a-z' -]{1,30}?)(?:\s+(?:tomorrow|today|at|on|next|for|this|in|with|\d|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|$|[.,!?])", t)
+        if mn and clean_name(mn.group(1)) and mn.group(1).strip() not in ("a client", "client", "someone", "them", "him", "her", "me", "it", "a session", "the next", "an appointment", "appointment"):
+            args["client"] = clean_name(mn.group(1))
+        elif client:
+            args["client"] = client
+        mw = re.search(r"\b((?:tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?|\d{1,2}(?::\d{2})?\s*(?:am|pm))\b", raw)
+        if mw:
+            args["when"] = mw.group(1).strip()
+        mf = re.search(r"\bfor (?:a |an |the )?([a-z][a-z ,'-]{2,40}?)(?:\s+(?:tomorrow|today|at|on|next|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|$|[.!?])", t)
+        if mf and clean_name(mf.group(1)) != args.get("client"):
+            args["what"] = mf.group(1).strip().capitalize()
+        return "book", args, 0.8
+    if has("pay", t):
+        args = {}
+        if amount:
+            args["amount"] = amount
+        if client:
+            args["client"] = client
+        kind = "deposit" if "deposit" in t else "tip" if re.search(r"\btip\b", t) else "flash" if "flash" in t else None
+        if kind:
+            args["kind"] = kind
+        return "pay", args, 0.8
+    return None
+
+
 def classify(text, cat):
     """Rule-based understanding. Returns (action, args, confidence)."""
     t = norm(text)
@@ -338,12 +425,21 @@ def classify(text, cat):
     verbs_open = any(v in t for v in ["open", "launch", "start ", "run "])
     verbs_panel = any(v in t for v in ["panel", "dock", "taskbar", "shortcut", "pin "])
 
-    # 1. Printing: every complaint about the printer is one of four fixes.
-    if any(w in t for w in PRINTER_WORDS):
+    # 1. Printing: every complaint about the printer is one of four fixes
+    #    (the papers Money prints are its own).
+    if any(w in t for w in PRINTER_WORDS) and not (has("aftercare", t) or has("consent", t)):
         for action, words in PRINTER_RULES:
             if any(w in t for w in words):
                 return action, {}, 0.8
         return "printer-fix", {}, 0.7
+
+    # 1b. Money. "get paid 150", "take a 50 deposit from maya", "book maya tomorrow at 2 for a dragon",
+    #     "how much did i make this week", "consent form for jon", "aftercare". Before the catalog,
+    #     whose tags (form, schedule, appointment) would otherwise suggest an office app.
+    if not any(v in t for v in ("install", "download", "uninstall", "remove", "app for", "program for", "something like")):
+        m = money_request(text, t)
+        if m:
+            return m
 
     # 2. A catalog app named outright (name, pkg or a tag spelled out). A
     #    question ("how do I scan a sketch") only counts here when it names
@@ -396,6 +492,8 @@ def classify(text, cat):
 
     # 6. System chores.
     for action, syns in SYNONYMS.items():
+        if action in MONEY_ACTIONS:
+            continue
         if any(s in t for s in syns) or (action == "night-look" and scheduled and re.search(r"dark|night|light|warm", t)):
             args = {}
             if action in ("shop-display", "effects", "night-look"):
@@ -497,6 +595,33 @@ def llm_choose(text, cat, provider, machine_info, installed):
         elif args.get("mode") in ("dark", "light"):
             a["mode"] = args["mode"]
         args = a
+    elif d["action"] == "pay":
+        a = {}
+        if re.fullmatch(r"\d+(\.\d{1,2})?", str(args.get("amount", ""))):
+            a["amount"] = str(args["amount"])
+        if clean_name(str(args.get("client", ""))):
+            a["client"] = clean_name(str(args["client"]))
+        if args.get("kind") in ("deposit", "balance", "tip", "flash", "other"):
+            a["kind"] = args["kind"]
+        args = a
+    elif d["action"] == "book":
+        a = {}
+        for k in ("client", "what"):
+            v = clean_name(str(args.get(k, ""))) if k == "client" else re.sub(r"[^A-Za-z0-9 ,'-]", "", str(args.get(k, ""))).strip()[:60]
+            if v:
+                a[k] = v
+        if re.fullmatch(r"[A-Za-z0-9: -]{1,40}", str(args.get("when", ""))):
+            a["when"] = str(args["when"])
+        args = a
+    elif d["action"] == "money":
+        args = {"range": args["range"]} if args.get("range") in ("today", "week", "month", "year") else {}
+    elif d["action"] == "consent":
+        c = clean_name(str(args.get("client", "")))
+        args = {"client": c} if c else {}
+    elif d["action"] == "aftercare":
+        args = {"how": "print" if args.get("how") == "print" else "show"}
+    elif d["action"] == "review":
+        args = {"which": "booking" if args.get("which") == "booking" else "review"}
     elif d["action"] in ("shop-display", "effects", "night-look"):
         a = {}
         if args.get("state") in ("on", "off"):
@@ -623,7 +748,7 @@ def do_disk(ui):
     return text, None
 
 
-def do_simple(action):
+def do_simple(action, args):
     if action == "printer-fix":
         spawn(["stencil-fix-printer"]); return "Looking for the stencil printer…", None
     if action == "printer-bluetooth":
@@ -679,6 +804,46 @@ def do_simple(action):
             return ("Shop display on: when the laptop sits idle it shows your work. Anyone walking past will see it." if st == "on"
                     else "Shop display off: an idle laptop goes dark again."), None
         spawn(["flattoo-showcase", "display", "gui"]); return "Opening Shop display.", None
+    if action == "pay":
+        cmd = ["flattoo-till", "pay"]
+        if args.get("amount"):
+            cmd.append(args["amount"])
+        if args.get("client"):
+            cmd += ["--client", args["client"]]
+        if args.get("kind"):
+            cmd += ["--kind", args["kind"]]
+        spawn(cmd)
+        if args.get("amount"):
+            return f"Showing the pay code for ${args['amount']}" + (f" from {args['client']}" if args.get("client") else "") + ". The client scans it; tap Paid when it lands.", None
+        return "Opening Get paid: type the amount, show the code, tap Paid when it lands.", None
+    if action == "book":
+        cmd = ["flattoo-till", "book-gui"]
+        for k in ("client", "what", "when"):
+            if args.get(k):
+                cmd += ["--" + k, args[k]]
+        spawn(cmd)
+        bits = [args.get("client"), args.get("what"), args.get("when")]
+        return "Booking " + " · ".join(b for b in bits if b) + ". Check the time, pick the deposit, tap Book it." if any(bits) else "Opening Book: who, what, when, price, deposit.", None
+    if action == "money":
+        rng = args.get("range")
+        if rng:
+            r = run(["flattoo-till", "money", rng])
+            spawn(["flattoo-till", "gui", "--page", "money"])
+            return (r.stdout.strip() or "Nothing recorded yet.") + f"\n\nThat is {'today' if rng == 'today' else 'this ' + rng}. Opening Money.", None
+        spawn(["flattoo-till", "gui"])
+        return "Opening Money: who is next, what is owed, today's take.", None
+    if action == "consent":
+        cmd = ["flattoo-till", "consent"] + (["--client", args["client"]] if args.get("client") else [])
+        spawn(cmd); return "Opening the consent form. Fill it in with the client, they sign with a finger, it is saved as a PDF.", None
+    if action == "aftercare":
+        if args.get("how") == "print":
+            r = run(["flattoo-till", "aftercare", "print"])
+            return ("Aftercare sheet sent to the printer." if r.returncode == 0 else "Could not print: " + (r.stdout + r.stderr).strip()), None
+        spawn(["flattoo-till", "aftercare", "show"]); return "Opening the aftercare sheet.", None
+    if action == "review":
+        which = args.get("which", "review")
+        spawn(["flattoo-till", "booklink" if which == "booking" else "review"])
+        return "Showing the booking code — turn the laptop round for the client." if which == "booking" else "Showing the review code — turn the laptop round for the client.", None
     if action == "layout":
         spawn(["flattoo-layout", "gui"]); return "Opening Layouts.", None
     if action == "lock":
@@ -924,7 +1089,7 @@ def handle(text, ui, provider="none"):
     elif action == "help":
         msg, follow = do_help(args.get("unknown"))
     else:
-        r = do_simple(action)
+        r = do_simple(action, args)
         msg, follow = r if r else do_help(text)
     if say and action not in ("suggest",):
         msg = say + "\n\n" + msg

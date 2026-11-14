@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Money
+GenericName=Bookings, payments and papers
+Comment=Who is next, take a deposit by QR code, the consent form, today's take
+Exec=flattoo-till gui
+TryExec=flattoo-till
+Icon=flattoo-till
+Terminal=false
+Categories=Office;Finance;X-Flattoo;
+Keywords=money;pay;payment;deposit;book;booking;client;consent;aftercare;venmo;cash app;
+StartupWMClass=flattoo-till

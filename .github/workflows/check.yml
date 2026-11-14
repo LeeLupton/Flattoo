@@ -33,5 +33,7 @@ jobs:
             .#checks.x86_64-linux.looks-i3config \
             .#checks.x86_64-linux.wiki-content \
             .#checks.x86_64-linux.assist-offline \
+            .#checks.x86_64-linux.till-offline \
+            .#checks.x86_64-linux.till-gui \
             .#checks.x86_64-linux.site
       - run: nix fmt -- --check $(git ls-files '*.nix')

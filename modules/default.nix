@@ -23,6 +23,7 @@ in
     ./copilot.nix
     ./assist.nix
     ./touch.nix
+    ./till.nix
   ];
 
   options.flattoo = {

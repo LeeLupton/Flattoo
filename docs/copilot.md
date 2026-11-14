@@ -32,6 +32,10 @@ or the "Ask Flattoo" menu entry. Type what you want in plain words:
 | *lock this setup* | Opens **Lock This Setup**. |
 | *how do I scan a sketch* / *what is the lock screen password* / *where did my file go* | Opens the matching page of **Help & How-To** ([docs/wiki.md](wiki.md)); several close pages → a list to pick from. |
 | *make a portfolio* / *my resume* / *add fine line to my skills* / *how do I get more clients* | The assist tools: gallery, profile/résumé, exposure checklist ([docs/assist.md](assist.md)). |
+| *get paid 150* / *take a 50 deposit from Maya* / *they owe me 200* | **Money**: the pay code with the amount (and client, and kind) filled in ([docs/till.md](till.md)). |
+| *book Maya tomorrow at 2 for a dragon* / *schedule Ana for Tuesday 3pm* / *walk-in* | The booking form, prefilled from the sentence. |
+| *who's next* / *how much did I make this week* / *export the ledger for taxes* | The Money feed, or the number for that range, then the Money tab. |
+| *consent form for Jon* / *print aftercare* / *leave a review* / *show the booking code* | The papers and the client-facing codes. |
 | *what can you do* | Lists all of the above. |
 
 Anything else gets "I don't know how to do that" and the list. Nothing is
@@ -47,13 +51,18 @@ actions with a natural-language front end:
   `update`, `update-status`, `printer-*`, `print`, `disk`, `wifi`,
   `bluetooth`, `battery`, `power`, `display`, `look`, `night-look`,
   `effects`, `client`, `shop-display`, `layout`, `lock`, `installed`,
-  `portfolio`, `profile`, `profile-skill`, `exposure`, `learn`, `help`).
+  `portfolio`, `profile`, `profile-skill`, `exposure`, `pay`, `book`,
+  `money`, `consent`, `aftercare`, `review`, `learn`, `help`).
   `learn` opens a wiki page; its page id is validated against the wiki
   index. `profile-skill` takes one sanitized string and asks before adding
   it ([docs/assist.md](assist.md)). `look` takes a preset name checked
   against `flattoo-look list` or `dark`/`light`; `night-look`,
   `effects` and `shop-display` take `on`/`off` and, for the schedule,
-  two `HH:MM` values — anything else is dropped.
+  two `HH:MM` values — anything else is dropped. The money actions take an
+  amount (`\d+(\.\d{1,2})?`), a client name reduced to letters, spaces,
+  apostrophes and hyphens, a kind from a fixed list, a range from a fixed
+  list, a `when` of letters, digits, colons and spaces that `flattoo-till`
+  parses again on its side.
   There is no action that takes a command string. `rm -rf /` is answered
   with the help text.
 * **Catalog-only installs.** `pkgs/flattoo-copilot/share/flattoo/catalog.json`

@@ -52,7 +52,7 @@ LANDING = """
 <a class="card" href="wiki/safety.html"><b>Safe on any Wi-Fi</b>Encrypted disk, validating encrypted DNS, no listeners, nightly updates with rollback.</a>
 </div>
 <h2>For whoever maintains it</h2>
-<p>Everything is one Git repository: push to <code>main</code> and the laptop pulls it overnight, builds the new system and makes it the boot default; the previous one stays one boot-menu entry away. Start with the <a href="docs/index.html">docs</a>: install, printers, maintenance, looks, the copilot, the network edge, the wiki, assist.</p>
+<p>Everything is one Git repository: push to <code>main</code> and the laptop pulls it overnight, builds the new system and makes it the boot default; the previous one stays one boot-menu entry away. Start with the <a href="docs/index.html">docs</a>: install, printers, maintenance, looks, the copilot, the network edge, the wiki, assist, touch, money.</p>
 """
 
 

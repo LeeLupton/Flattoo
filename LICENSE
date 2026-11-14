@@ -26,10 +26,13 @@ the rest); each of those stays under its own license, listed in NOTICE.
    prefix-sanity filtering, a validating resolver with encrypted upstreams
    and local reverse zones, and a dispatcher that keeps DNS working on
    captive networks; the minimal-and-robust footing (no terminal for the
-   user, every change declarative, every tool tested offline); and the
+   user, every change declarative, every tool tested offline); the
    looks engine, lock, show-a-client, shop-display and keyboard-free
-   provisions, as a system for a non-technical professional's work
-   machine.
+   provisions; and the offline money loop (a card feed of what is next
+   and what is owed, payment codes the client's own phone opens with the
+   amount filled in, tap-recorded payments, finger-signed consent records
+   and the aftercare sheet, with no account, API or sync), as a system
+   for a non-technical professional's work machine.
 
    "Commercial Use" means selling, licensing, renting or offering for a fee
    the Software or a derivative of it; preinstalling it on hardware that is

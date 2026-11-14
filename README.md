@@ -28,6 +28,7 @@ in the boot menu within the configured retention limits.
 | Make it theirs | **Looks**: fifteen whole-desktop presets (theme, icons, fonts, wallpaper, panels, workspaces, shortcuts, app names, window effects, notification bubbles), live, by name from Ask Flattoo. Blackwork, Flash Sheet, Neon, Sakura, Forest, Kanagawa next to Home and Classic. An **automatic night look** switches to a look's dark twin in the evening. Picom effects (rounded corners, shadows, blur, animations) per look, one switch to turn off. A boot splash and login screen with the Flattoo mark. **Layouts**: open-and-place window sets. An i3 tiling session at the login screen. Save your own of each. [docs/looks.md](docs/looks.md). |
 | Front of house | **Show a Client**: the portfolio fills the screen for a client to browse — tap or swipe, a Done button ends it and locks the laptop. **Shop display**: an idle laptop shows the work instead of going dark. A touch-sized **power sheet** on Super+Escape. |
 | No keyboard needed | Ask Flattoo opens as a **tap sheet** of the things people ask; an **on-screen keyboard** pops up for any text box and sits on the lock and login screens; optional **voice** (local whisper.cpp), **fingerprint** unlock and a **FIDO2 key** for the disk passphrase. [docs/touch.md](docs/touch.md). |
+| Gets paid | **Money**: a feed of cards like a phone — the next client, a deposit owed, today's take, a client due to rebook — one big button each, swipe for the next. **Get paid** is a number pad that becomes a QR code the client scans (Venmo, Cash App, PayPal, Square, Zelle, amount filled in) and one tap to record it; **Book** is six taps; the **consent form** is signed with a finger and kept as a PDF; the **aftercare sheet** prints; the ledger is a CSV for the accountant. Nothing leaves the laptop. [docs/till.md](docs/till.md). |
 | Looks after their name | **Portfolio** builds a gallery folder from finished-work photos (location data stripped, nothing uploaded). **Artist Profile** turns facts into a résumé, bio and press text. An exposure checklist tracks the free listings; a weekly nudge says what is worth a minute. Offers only, never actions in the artist's name. [docs/assist.md](docs/assist.md). |
 | Then freeze it | **Lock This Setup** bakes the current desktop into the NixOS config: restored at every login, settings kiosk-locked, boot menu hidden, add-ons frozen, GitHub no longer pulled — only weekly nixpkgs security bumps. **Unlock** needs the admin password. |
 | Sketch on paper | Simple Scan, then right-click → **Clean Lines** turns the pencil scan into black stencil lines. |
@@ -127,7 +128,7 @@ hosts/shop-laptop/           the studio laptop: flattoo.* settings, disk layout
 hosts/installer/             installer ISO + the flattoo-install wizard
 modules/                     base, desktop, art, printing, stencil, media, laptop,
                              security, network (edge hardening, Unbound), remote,
-                             extras, autoupgrade (+ flattoo-sync), looks, locked, copilot, assist
+                             extras, autoupgrade (+ flattoo-sync), looks, locked, copilot, assist, till
 pkgs/brother-pj/             PocketJet 7 LPR + CUPS wrapper derivations (5 models)
 pkgs/phomemo-cups/           Phomemo/QuYin vendor filters + 75 PPDs
 pkgs/stencil-tools/          stencil-print, stencil-clean-lines, stencil-calibrate,
@@ -139,12 +140,13 @@ pkgs/flattoo-looks/          flattoo-look, flattoo-layout, i3 config, wallpapers
 pkgs/flattoo-copilot/        flattoo-copilot, flattoo-admin, catalog.json (+ tests)
 pkgs/flattoo-wiki/           Help & How-To: renders wiki/ to HTML + index.json (+ tests)
 pkgs/flattoo-assist/         flattoo-portfolio, flattoo-profile (+ offline test)
+pkgs/flattoo-till/           flattoo-till — Money: feed, pay codes, bookings, consent, aftercare, ledger (+ tests)
 wiki/pages/, wiki/screenshots/  the artist's help pages and their VM-made screenshots
 tests/screenshots.nix        the VM run that takes them (nix build .#screenshots)
 scripts/update-screenshots.sh
 tests/look-bundle/           sample captured look for checks.locked-eval
 files/                       XFCE panel/screensaver/power defaults, Thunar actions
-docs/                        install, printers, maintenance, looks, copilot, network, wiki, assist
+docs/                        install, printers, maintenance, looks, copilot, network, wiki, assist, touch, till
 .github/workflows/           weekly lock bump + eval gate; per-push checks
 ```
 

@@ -103,6 +103,10 @@ let
       # Software-rendered VM: picom repaints seconds late and the screenshots
       # show stale frames. xfwm's own compositor still gives shadows.
       flattoo.desktop.effects = false;
+      # Money with payment apps set, so the pay code has something to show.
+      flattoo.till.payments.venmo = "inkandneedle";
+      flattoo.till.payments.cashapp = "inkandneedle";
+      flattoo.till.reviewLink = "https://g.page/r/example/review";
       environment.etc."flattoo/sample-stencil.png".source = "${sample}/sample-stencil.png";
       environment.systemPackages = [
         pkgs.xdotool
@@ -132,7 +136,7 @@ let
 
     def close_dialogs(m=None):
         m = m or studio
-        m.execute("pkill -f 'flattoo-(copilot|look|layout|lock|wiki|portfolio|profile|apps)'; pkill -f 'stencil-(print|fix-printer|bt-setup|net-setup|calibrate)'; true")
+        m.execute("pkill -f 'flattoo-(copilot|look|layout|lock|wiki|portfolio|profile|apps|till)'; pkill -f 'stencil-(print|fix-printer|bt-setup|net-setup|calibrate)'; true")
         m.sleep(1)
         m.execute("pkill -f zenity; pkill -f rofi; true")
         artist("xdotool key Escape", m, check=False)
@@ -345,6 +349,41 @@ pkgs.testers.runNixOSTest {
         wait_window("Artist Profile")
         shot("profile-dialog", "Artist Profile: the basics, skills, certifications, the résumé, the exposure checklist.")
         close_dialogs()
+
+        # Money: a day with two clients on the books and one payment in, the Home look
+        artist("flattoo-look apply home")
+        wait_panel()
+        artist("flattoo-profile set name 'Sam Rivera' >/dev/null; flattoo-profile set studio 'Ink & Needle' >/dev/null; true", check=False)
+        artist("flattoo-till book --client 'Maya Chen' --what 'Dragon, forearm' --when 'today 2pm' --price 400 --deposit 100 >/dev/null")
+        artist("flattoo-till book --client 'Jon Park' --what 'Script, ribs' --when 'tomorrow 11:30' --price 250 --deposit 50 >/dev/null")
+        artist("flattoo-till book --client 'Ana Ruiz' --what 'Sleeve, session 2' --when '2026-10-01 13:00' --price 500 >/dev/null; flattoo-till done $(flattoo-till bookings all | grep 'Ana Ruiz' | cut -d' ' -f1) >/dev/null")
+        artist("flattoo-till paid 120 --method cashapp --client Walk-in --kind flash >/dev/null")
+        bg_logged("flattoo-till gui")
+        wait_window("Money") or launch_log()
+        shot("money-feed", "Money: the feed. One card fills the screen — the next client, what they owe, one big button — and a swipe brings the next. The tabs along the bottom are Get paid, Book, Papers and Money.")
+        close_dialogs()
+        bg_logged("flattoo-till gui --page pay")
+        wait_window("Money") or launch_log()
+        shot("money-pay", "Get paid: type the amount, say what it is for and who, show the pay code. Cash and card record with one tap.")
+        close_dialogs()
+        bg_logged("flattoo-till pay 100 --client 'Maya Chen' --kind deposit")
+        wait_window("Money") or launch_log()
+        shot("money-qr", "The pay code: the client scans it with their phone camera and Venmo (or Cash App, PayPal, Square, Zelle) opens with the amount filled in. Paid ✓ records it.")
+        close_dialogs()
+        bg_logged("flattoo-till gui --page book")
+        wait_window("Money") or launch_log()
+        shot("money-book", "Book: who, what, price, deposit, a day and a half-hour slot, Book it. The deposit code follows.")
+        close_dialogs()
+        bg_logged("flattoo-till consent --client 'Maya Chen' --what 'Dragon, forearm' --step statements")
+        wait_window("Consent form") or launch_log()
+        shot("money-consent", "The consent form, read together: tap each statement that is true, then the client signs with a finger. Saved as a PDF and kept two years.")
+        close_dialogs()
+        bg_logged("flattoo-till gui --page money")
+        wait_window("Money") or launch_log()
+        shot("money-ledger", "Money: today, this week, this month, this year, every payment underneath, and Export for taxes — a CSV the accountant opens.")
+        close_dialogs()
+        artist("flattoo-look apply studio-dark")
+        wait_panel()
 
         # Stencil tools
         bg("stencil-print --gui /etc/flattoo/sample-stencil.png")
