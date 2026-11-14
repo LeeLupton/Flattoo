@@ -35,8 +35,9 @@ flattoo-till book --client "Ana Ruiz" --what "Flash 12" --when "friday at 3" --p
 flattoo-till book --client "Old Client" --what "Sleeve session 2" --when "2026-10-01 13:00" --price 500 >/dev/null
 flattoo-till bookings today | grep -c . | grep -qx 1
 flattoo-till bookings week | grep -c . | grep -qx 3
-old=$(flattoo-till bookings all | grep "Old Client" | awk '{print $1}')
-flattoo-till done "$old" | grep -q "\[done\]"
+flattoo-till done "old client" | grep -q "\[done\]"      # by name: the client's latest open booking
+! flattoo-till done "old client" 2>/dev/null               # nothing open any more
+! flattoo-till cancel "Nobody" 2>/dev/null
 
 # the feed: next up, the deposit owed, today's money, the rebook nudge, the review code
 flattoo-till feed --json > feed.json

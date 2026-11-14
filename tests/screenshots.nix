@@ -356,7 +356,7 @@ pkgs.testers.runNixOSTest {
         artist("flattoo-profile set name 'Sam Rivera' >/dev/null; flattoo-profile set studio 'Ink & Needle' >/dev/null; true", check=False)
         artist("flattoo-till book --client 'Maya Chen' --what 'Dragon, forearm' --when 'today 2pm' --price 400 --deposit 100 >/dev/null")
         artist("flattoo-till book --client 'Jon Park' --what 'Script, ribs' --when 'tomorrow 11:30' --price 250 --deposit 50 >/dev/null")
-        artist("flattoo-till book --client 'Ana Ruiz' --what 'Sleeve, session 2' --when '2026-10-01 13:00' --price 500 >/dev/null; flattoo-till done $(flattoo-till bookings all | grep 'Ana Ruiz' | cut -d' ' -f1) >/dev/null")
+        artist("flattoo-till book --client 'Ana Ruiz' --what 'Sleeve, session 2' --when '2026-10-01 13:00' --price 500 >/dev/null; flattoo-till done 'Ana Ruiz' >/dev/null")
         artist("flattoo-till paid 120 --method cashapp --client Walk-in --kind flash >/dev/null")
         bg_logged("flattoo-till gui")
         wait_window("Money") or launch_log()

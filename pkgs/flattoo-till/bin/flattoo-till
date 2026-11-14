@@ -148,7 +148,10 @@ def set_setting(key, value):
     if key in METHODS:
         d.setdefault("pay", {})[key] = value
     elif key in ("default_deposit", "rebook_after_days"):
-        d[key] = int(value)
+        try:
+            d[key] = int(value)
+        except ValueError:
+            raise SystemExit(f"{key} has to be a whole number, not {value!r}") from None
     elif key in DEFAULTS:
         d[key] = value
     else:
@@ -275,13 +278,17 @@ def add_booking(client, what, when, price=0, deposit=0, notes=""):
 
 
 def update_booking(bid, **fields):
+    """By id (or a prefix), or by client name: the client's latest booking that is still open."""
     bs = bookings()
-    for b in bs:
-        if b["id"] == bid or b["id"].startswith(bid):
-            b.update(fields)
-            save_json(_path("bookings"), bs)
-            return b
-    return None
+    hit = next((b for b in bs if b["id"] == bid or b["id"].startswith(bid)), None)
+    if hit is None:
+        mine = [b for b in bs if b["client"].lower() == bid.strip().lower() and b["status"] == "booked"]
+        hit = max(mine, key=booking_dt) if mine else None
+    if hit is None:
+        return None
+    hit.update(fields)
+    save_json(_path("bookings"), bs)
+    return hit
 
 
 def booking_dt(b):
@@ -1478,6 +1485,8 @@ class ConsentFlow:
         self.win.add(root)
         self.stack = Gtk.Stack(); self.stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
         root.pack_start(app.scrolled(self.stack), True, True, 0)
+        self.note = Gtk.Label(); self.note.get_style_context().add_class("toast"); self.note.set_no_show_all(True)
+        root.pack_start(self.note, False, False, 0)
         # 1 who
         who = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=40, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
         k = Gtk.Label(label="CONSENT · 1 OF 3", xalign=0); k.get_style_context().add_class("kicker"); who.pack_start(k, False, False, 0)
@@ -1541,22 +1550,27 @@ class ConsentFlow:
         self.out = None
         self.win.show_all()
 
+    def say(self, text):
+        """A line at the bottom of this window (the main window's toast would sit behind it)."""
+        self.note.set_text(text); self.note.show()
+        self.app.GLib.timeout_add(4000, lambda: self.note.hide() or False)
+
     def to_statements(self):
         if not self.e["client"].get_text().strip():
-            self.app.say("The client's name is needed."); return
+            self.say("The client's name is needed."); return
         dob = self.e["dob"].get_text().strip()
         try:
             age = (now().date() - dt.date.fromisoformat(dob)).days // 365
         except ValueError:
-            self.app.say("Date of birth as YYYY-MM-DD, please."); return
+            self.say("Date of birth as YYYY-MM-DD, please."); return
         if age < 18:
-            self.app.say(f"Under 18 ({age}). Tattooing a minor is not allowed; stop here."); return
+            self.say(f"Under 18 ({age}). Tattooing a minor is not allowed in North Carolina; stop here."); return
         self.stack.set_visible_child_name("statements")
 
     def to_sign(self):
         missing = [k for k, cb in self.checks.items() if not cb.get_active()]
         if missing:
-            self.app.say("Every statement has to be ticked before signing."); return
+            self.say("Every statement has to be ticked before signing."); return
         self.stack.set_visible_child_name("sign")
 
     def pen_down(self, _w, ev):
@@ -1607,7 +1621,7 @@ class ConsentFlow:
 
     def finish(self):
         if sum(len(s) for s in self.strokes) < 8:
-            self.app.say("A signature is needed."); return
+            self.say("A signature is needed."); return
         g = {k: e.get_text().strip() for k, e in self.e.items()}
         self.out = save_consent(g["client"], g["dob"], g["phone"], g["address"], g["design"], g["placement"], self.strokes, photos=self.photo_cb.get_active(), email=g["email"])
         self.done_title.set_text("Saved")
@@ -1617,7 +1631,7 @@ class ConsentFlow:
     def print_copy(self):
         if self.out:
             ok, msg = print_file(self.out)
-            self.app.say("Printing a copy." if ok else (msg or "Could not print."))
+            self.say("Printing a copy." if ok else (msg or "Could not print."))
 
 
 # ------------------------------------------------------------------ CLI
@@ -1638,7 +1652,7 @@ def main(argv=None):
     p = sub.add_parser("book-gui"); p.add_argument("--client", default=""); p.add_argument("--what", default=""); p.add_argument("--when", default="")
     p = sub.add_parser("bookings"); p.add_argument("range", nargs="?", default="week", choices=["today", "week", "all"])
     for c in ("done", "cancel", "deposit-paid"):
-        p = sub.add_parser(c); p.add_argument("id")
+        p = sub.add_parser(c); p.add_argument("id", help="booking id, or the client's name (their latest open booking)")
     p = sub.add_parser("consent"); p.add_argument("--client", default=""); p.add_argument("--what", default=""); p.add_argument("--step", default="who", choices=["who", "statements", "sign"]); p.add_argument("--shot")
     p = sub.add_parser("consent-pdf")
     for a in ("--client", "--dob", "--phone", "--address", "--design", "--placement"):
@@ -1725,7 +1739,7 @@ def main(argv=None):
     if cmd == "brief":
         text = brief_text()
         print(text)
-        if os.environ.get("DISPLAY") and shutil.which("notify-send"):
+        if (os.environ.get("DBUS_SESSION_BUS_ADDRESS") or os.environ.get("DISPLAY")) and shutil.which("notify-send"):  # the user timer has the session bus
             run(["notify-send", "-a", "Money", "-i", "flattoo-till", "Today at the shop", text])
         return 0
     if cmd == "settings":
