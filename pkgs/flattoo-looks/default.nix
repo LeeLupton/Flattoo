@@ -284,6 +284,9 @@ stdenv.mkDerivation (finalAttrs: {
           flattoo-look twin sakura-night light | grep -qx sakura
           [ -z "$(flattoo-look twin neon dark)" ]
           flattoo-look current-name | grep -qx gruvbox
+          # the names under desktop icons: dark on the light wallpapers, xfdesktop's white on the dark ones
+          for l in home sakura flash paper; do flattoo-look label-style $l | grep -qx dark; done
+          for l in home-dark sakura-night neon kanagawa blackwork studio-dark; do flattoo-look label-style $l | grep -qx light; done
           echo "ok: automatic night look"
 
           # the lock-screen picture a look writes

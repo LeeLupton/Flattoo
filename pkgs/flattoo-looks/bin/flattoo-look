@@ -296,6 +296,7 @@ def apply_live(p, quiet=False, scheduled=False):
             xq_set_array("xfwm4", "/general/workspace_names", "string", ws["names"])
     if "wallpaper" in p:
         set_wallpaper(resolve_wallpaper(p["wallpaper"]))
+        apply_desktop_labels(resolve_wallpaper(p["wallpaper"]), p.get("desktop_labels"))
         make_backdrop(resolve_wallpaper(p["wallpaper"]), p.get("dark", True))
         run(["flattoo-showcase", "backdrop-saver"])  # the lock screen shows it (unless the shop display is on)
     apply_app_names(p.get("app_names"))  # before the panel: launchers take the familiar name and icon
@@ -783,6 +784,37 @@ def resolve_wallpaper(name):
     return name
 
 
+def label_style(path, forced=None):
+    """How the names under the desktop icons are drawn on this wallpaper:
+    "dark" (dark text on a soft light pill) where the picture is light under
+    the icon columns, "light" (xfdesktop's own white text with a shadow)
+    where it is dark. xfdesktop's default is white whatever the picture, which
+    on the pastel looks left the names unreadable."""
+    if forced in ("dark", "light"):
+        return forced
+    try:
+        from PIL import Image, ImageStat
+        im = Image.open(path).convert("L")
+        w, h = im.size
+        lum = ImageStat.Stat(im.crop((0, 0, int(w * 0.32), h))).mean[0] / 255  # the icon columns fill from the left
+    except Exception:  # noqa: BLE001 - no picture, no opinion
+        return "light"
+    return "dark" if lum > 0.55 else "light"
+
+
+def apply_desktop_labels(path, forced=None):
+    style = label_style(path, forced)
+    if style == "dark":
+        xq_set("xfce4-desktop", "/desktop-icons/use-custom-label-text-color", "bool", "true")
+        xq_set_array("xfce4-desktop", "/desktop-icons/label-text-color", "double", [0.11, 0.11, 0.12, 1.0])
+        xq_set("xfce4-desktop", "/desktop-icons/use-custom-label-background-color", "bool", "true")
+        xq_set_array("xfce4-desktop", "/desktop-icons/label-background-color", "double", [1.0, 1.0, 1.0, 0.5])
+    else:
+        xq_set("xfce4-desktop", "/desktop-icons/use-custom-label-text-color", "bool", "false")
+        xq_set("xfce4-desktop", "/desktop-icons/use-custom-label-background-color", "bool", "false")
+    return style
+
+
 def set_wallpaper(path):
     """Every backdrop property xfdesktop already has, plus one per connected
     monitor and workspace (a fresh profile has none yet)."""
@@ -1071,6 +1103,7 @@ def main(argv=None):
     r = sub.add_parser("restore-files"); r.add_argument("dir")
     t = sub.add_parser("panel-tar"); t.add_argument("name"); t.add_argument("out")
     t = sub.add_parser("panel-load"); t.add_argument("name")  # just the panels of a look (what apply does for them)
+    t = sub.add_parser("label-style"); t.add_argument("name")  # dark | light: the icon names on that look's wallpaper
     pc = sub.add_parser("picom-conf", help="print the picom config a look generates"); pc.add_argument("name"); pc.add_argument("--xrender", action="store_true")
     bd = sub.add_parser("backdrop", help="write the lock-screen picture for a look (what apply does)"); bd.add_argument("name")
     fx = sub.add_parser("effects"); fx.add_argument("state", choices=["on", "off", "status"])
@@ -1160,6 +1193,9 @@ def main(argv=None):
     if args.cmd == "panel-tar":
         pr = load_preset(args.name)
         panel_profile_tar(pr.get("panels") or pr.get("panel", {}), args.out); print(args.out); return 0
+    if args.cmd == "label-style":
+        pr = load_preset(args.name)
+        print(label_style(resolve_wallpaper(pr["wallpaper"]), pr.get("desktop_labels"))); return 0
     if args.cmd == "panel-load":
         pr = load_preset(args.name)
         apply_panel(pr.get("panels") or pr.get("panel", {})); return 0
